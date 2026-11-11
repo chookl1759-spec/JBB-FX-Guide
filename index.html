@@ -2314,7 +2314,7 @@ table.dt td small{display:block}
 .chat-in .btn{margin:0;height:48px;padding:0 20px}
 .chat-foot{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:8px}.chat-foot .hint{font-size:11.5px}
 @media (max-width:860px){.chat-card{min-height:0}.chat-log{max-height:55vh}.msg .bub{max-width:92%}.chat-foot{flex-direction:column;align-items:stretch}.busy-pill b{display:none}}
-
+.b-list{margin:10px 0 0;padding-left:22px;font-size:13px;line-height:1.8}.b-list .b-s{display:inline-block;min-width:56px;font-weight:700;color:var(--sub)}.b-list li.on .b-s{color:#003087}.b-list li.ok .b-s{color:var(--ok)}.b-list li.warn .b-s{color:var(--warn)}
 /* ===== 웹 버전 ===== */
 .wl{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#F8FAFC;padding:20px}
 .wl.hidden{display:none}
@@ -2490,7 +2490,26 @@ table.dt td small{display:block}
   </section>
 </div></div>
 
-<div class="wrap single hidden" id="tab-admin"><section class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">이용자 관리</h2><div class="row"><input class="field" id="admReason" placeholder="차단 사유 (선택)" style="width:200px;padding:5px 10px"><button class="btn ghost sm" id="admEmb" type="button">엠블럼 꾸미기</button></div></div><p class="hint">이 메뉴는 소유자에게만 보입니다. 페이지를 연 적이 있는 직원과 검토 건수를 보여 줍니다. 차단하면 그 직원은 AI 검토 기능을 쓸 수 없고, 화면에 이용 제한 안내가 뜹니다. 완전히 접근을 막으려면 아티팩트 공유 설정에서 그 직원을 빼 주세요.</p><div class="stat-tiles adm-stats" id="admStats"></div><div class="status" id="admSt" role="status"></div><div id="admBody" style="margin-top:10px"><p class="hint">불러오는 중…</p></div></section></div>
+<div class="wrap single hidden" id="tab-admin"><section class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">이용자 관리</h2><div class="row"><input class="field" id="admReason" placeholder="차단 사유 (선택)" style="width:200px;padding:5px 10px"><button class="btn ghost sm" id="admEmb" type="button">엠블럼 꾸미기</button></div></div><p class="hint">이 메뉴는 소유자에게만 보입니다. 페이지를 연 적이 있는 직원과 검토 건수를 보여 줍니다. 차단하면 그 직원은 AI 검토 기능을 쓸 수 없고, 화면에 이용 제한 안내가 뜹니다. 완전히 접근을 막으려면 아티팩트 공유 설정에서 그 직원을 빼 주세요.</p><div class="stat-tiles adm-stats" id="admStats"></div><div class="status" id="admSt" role="status"></div><div id="admBody" style="margin-top:10px"><p class="hint">불러오는 중…</p></div></section><section class="panel" style="margin-top:16px"><div class="row" style="justify-content:space-between"><h2 style="margin:0">대표 거래 일괄 AI 검토</h2><span class="hint">관리자 전용 · 본인 Claude 사용량이 차감됩니다</span></div>
+<p class="hint">아래 거래를 실제 AI 거래 검토로 한 건씩 차례대로 돌리고, 결과를 팀 검토 내역에 저장합니다. 추가 확인 질문은 건너뛰고 바로 검토합니다. 한 건에 1~2분(2차 검토 포함)쯤 걸리니 끝날 때까지 이 창을 열어 두세요. 웹 사이트에는 매시간 자동 동기화로 반영됩니다.</p>
+<div class="row" style="gap:8px;margin:8px 0"><label class="fl" style="flex:1"><span>지점</span><input class="field" id="bBranch" value="외환사업부"></label><label class="fl" style="flex:1"><span>담당자</span><input class="field" id="bStaff" value="추현수"></label></div>
+<label class="fl"><span>검토할 거래 <em>한 줄에 한 건</em></span><textarea class="field" id="bList" rows="10">거주자 개인이 해외 지인에게 4천불을 증빙 없이 송금. 올해 무증빙 송금 누계가 이미 10만불을 넘음.
+거주자 개인이 미국에 사는 형에게 생활비 3만불을 증빙 없이 송금. 올해 이미 다른 은행에서 2만불을 보냄.
+국내 거주 부모가 미국 대학 재학 중인 자녀에게 학비·생활비 5만불 송금.
+해외 지사에 2년 파견된 직원(주재원)에게 체재비 2만불 송금.
+거주자 법인(제조업)이 중국 거래처에 원자재 수입대금 15만불을 송금방식으로 지급. 수입신고필증 있음.
+거주자 법인이 수입 계약 후 물품 선적 전에 선급금 5만불을 먼저 송금(사전송금방식 수입).
+거주자 법인(주채무계열 아님, 당행이 여신최다은행)이 베트남에 100% 자회사를 신설하려고 50만불 송금.
+이미 100% 지분을 가진 베트남 현지법인에 운영자금 30만불을 2년 만기로 빌려줌(대부투자).
+해외 파견 예정인 거주자 직원이 현지에서 살 주택을 사려고 30만불 송금. 매매계약 확정.
+미국 시민권자(비거주자 재외동포)가 국내 예금 2억원을 본인 해외계좌로 송금. 세무서 예금등 자금출처확인서 있음.
+국내 공장에서 일하는 베트남 국적 근로자가 급여로 모은 2만불을 본국 가족에게 송금.
+거주자 법인이 수입대금 3만불을 계약 상대방(중국 수출자)이 아닌 홍콩 대리점 계좌로 보내 달라고 요청.
+거주자 법인이 같은 미국 거래처에 대한 수출채권 10만불과 수입채무 8만불을 상계하고 차액 2만불만 받으려 함.
+거주자 영리법인이 해외 모회사로부터 운영자금 300만불을 2년 만기로 차입해 받음.
+미국 국적 비거주자가 해외에서 송금한 자금 10억원으로 서울 아파트를 사려 함.</textarea></label>
+<div class="row" style="gap:8px;margin-top:10px"><button class="btn" id="bStart" type="button">일괄 AI 검토 시작</button><button class="btn ghost" id="bStop" type="button" disabled>중지</button></div>
+<div class="status" id="bSt" role="status" style="margin-top:8px"></div><ol class="b-list" id="bLog"></ol></section></div>
 
 <div class="wrap single hidden" id="tab-forms"><section class="panel">
   <h2>서식함</h2>
@@ -4368,6 +4387,45 @@ $("#chatSugg").addEventListener("click", e => { const b = e.target.closest("[dat
 $("#chatClear").onclick = chatClear;
 if (window.__WEB){ $("#chatUnavail").innerHTML = `<b>웹 사이트에서는 실무 Q&A를 Claude 화면에서 이어서 합니다.</b> 질문을 보내면 내용을 복사하고 Claude 화면을 엽니다. 거기서 '실무 Q&A' 메뉴에 붙여 넣으세요.`; $("#chatUnavail").classList.remove("hidden"); }
 chatRender();
+
+/* ---------- 관리: 대표 거래 일괄 AI 검토 ---------- */
+let batchStop = false;
+const bSleep = ms => new Promise(r => setTimeout(r, ms));
+async function bWait(cond, maxMs){ const t0 = Date.now(); while (Date.now() - t0 < maxMs){ if (batchStop) return false; if (cond()) return true; await bSleep(1000); } return false; }
+function r2Done(){ return [...document.querySelectorAll("#thread .r2-steps")].every(e => !e.textContent.trim()); }
+$("#bStop").onclick = () => { batchStop = true; $("#bSt").textContent = "현재 건을 마치면 멈춥니다…"; };
+$("#bStart").onclick = async () => {
+  const list = $("#bList").value.split("\n").map(s => s.trim()).filter(Boolean);
+  if (!list.length) return;
+  if (!sample){ $("#bSt").textContent = "Claude AI가 연결되어 있지 않습니다. 로그인한 뒤 다시 시도하세요."; return; }
+  if (busy){ $("#bSt").textContent = "다른 검토가 진행 중입니다. 끝난 뒤 다시 눌러 주세요."; return; }
+  batchStop = false; $("#bStart").disabled = true; $("#bStop").disabled = false;
+  const branch = $("#bBranch").value.trim(), staff = $("#bStaff").value.trim();
+  $("#bLog").innerHTML = list.map((q, i) => `<li data-i="${i}"><span class="b-s">대기</span> ${esc(q.slice(0, 60))}</li>`).join("");
+  const mark = (i, t, cls) => { const li = $(`#bLog li[data-i="${i}"]`); if (li){ li.className = cls || ""; li.querySelector(".b-s").textContent = t; } };
+  let ok = 0;
+  for (let i = 0; i < list.length; i++){
+    if (batchStop) break;
+    $("#bSt").textContent = `${i + 1}/${list.length}건 검토 중…`; mark(i, "검토 중", "on");
+    showTab("ask"); $("#newBtn").click(); await bSleep(300);
+    curType = TYPES[0]; renderTypes();
+    $("#branchName").value = branch; $("#staffName").value = staff; $("#qbox").value = list[i]; $("#qbox").dispatchEvent(new Event("input"));
+    const before = allCases().length;
+    try {
+      const p = start();
+      await bWait(() => busy || document.querySelector("#thread [data-skip]"), 120000);
+      const sk = document.querySelector("#thread [data-skip]"); if (sk) sk.click();
+      await p.catch(() => {});
+      await bWait(() => !busy, 600000);
+      await bWait(() => r2Done(), 300000);
+      await bSleep(2500);
+      const saved = allCases().length > before;
+      mark(i, saved ? "완료" : "확인 필요", saved ? "ok" : "warn"); if (saved) ok++;
+    } catch (e) { mark(i, "오류", "warn"); }
+  }
+  $("#bSt").textContent = (batchStop ? "중지했습니다. " : "모두 마쳤습니다. ") + `${ok}건을 팀 검토 내역에 저장했습니다. 웹 사이트에는 매시간 자동으로 반영됩니다.`;
+  $("#bStart").disabled = false; $("#bStop").disabled = true; showTab("admin");
+};
 
 /* ---------- 웹 버전: AI 검토는 Claude 화면으로 ---------- */
 async function toClaude(q, say){
