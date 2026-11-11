@@ -2230,6 +2230,45 @@ table.dt td small{display:block}
 @media (max-width:520px){.tb-word span{display:none}.tb-claude{padding:6px 11px}}
 @media (max-width:860px){.topbar{padding:10px 12px 0}.tb-app{display:none}.tb-claude b{font-size:12px}.tier{grid-template-columns:repeat(2,minmax(0,1fr))}.g-grid,.g-row,.g-row3{grid-template-columns:1fr}}
 
+/* ===== 16차 ===== */
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;flex:none}
+.busy-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid #003087;background:#EEF2FA;color:#003087;border-radius:999px;padding:6px 12px;font-size:12.5px;margin-left:auto;margin-right:8px;cursor:pointer;white-space:nowrap}
+.busy-pill em{font-style:normal;font-variant-numeric:tabular-nums;color:#475569}
+.busy-pill.hidden{display:none}
+:root[data-theme="dark"] .busy-pill{background:#163a78;border-color:#4fb3f5;color:#cfe6ff}
+.prog li.busy{display:inline-flex;align-items:center;gap:6px;color:#003087;font-weight:700}.prog li.busy::before{content:none}
+:root[data-theme="dark"] .prog li.busy{color:#8fd0ff}
+#askBtn.is-busy::before,#chatSend.is-busy::before{content:"";display:inline-block;width:13px;height:13px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px}
+.tk-head{min-width:178px}
+.tk-t{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.tk-date{font-size:13px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.tk-head > span{line-height:1.45}
+.tk-items{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:0!important}
+.tk{display:grid!important;grid-template-columns:auto auto;grid-template-areas:"c c" "v e";justify-content:center;align-items:baseline;column-gap:7px;row-gap:0;padding:2px 10px!important;min-width:0}
+.tk-c{grid-area:c;font-size:11.5px!important}.tk b{grid-area:v;font-size:17px!important}.tk em{grid-area:e}
+@media (max-width:860px){.tk-head{min-width:0}.tk-items{grid-template-columns:repeat(2,minmax(0,1fr))}.tk{justify-content:start;padding:6px 8px!important}}
+.chat-card{display:flex;flex-direction:column;min-height:calc(100vh - 210px)}
+.chat-log{flex:1;min-height:320px;max-height:62vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:6px 2px 10px}
+.chat-empty{margin:auto;text-align:center;color:var(--sub)}.chat-empty b{display:block;font-size:16px;color:var(--ink);margin-bottom:4px}
+.msg{display:flex;gap:8px;align-items:flex-start;max-width:100%}
+.msg.me{justify-content:flex-end}
+.msg .bub{border-radius:14px;padding:10px 14px;font-size:14px;line-height:1.65;max-width:min(760px,88%);min-width:0;overflow-wrap:anywhere}
+.msg.me .bub{background:#003087;color:#fff;border-bottom-right-radius:4px}
+.msg.ai .bub{background:var(--surface-2);border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:4px}
+.msg.ai .bub p{margin:.3em 0}.msg.ai .bub ul,.msg.ai .bub ol{margin:.3em 0;padding-left:1.3em}.msg.ai .bub h3,.msg.ai .bub h4{font-size:14px;margin:.6em 0 .2em}
+.msg .av{flex:none;width:28px;height:28px;border-radius:9px;background:#003087;color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center}
+.typing{display:flex;align-items:center;gap:8px;color:#003087;font-size:13px;margin-top:4px}
+:root[data-theme="dark"] .typing{color:#8fd0ff}:root[data-theme="dark"] .msg.ai .bub{background:#1a4580;border-color:#2c64a8}
+.chat-refs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12px}
+.chat-refs span{color:var(--sub);font-weight:600}.chat-refs a{background:var(--accent-soft);border-radius:6px;padding:2px 7px;text-decoration:none}
+.chat-err{color:var(--crit);font-size:12.5px;margin:6px 0 0}
+.chat-sugg{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.chat-in{display:flex;gap:8px;align-items:flex-end}.chat-in textarea{flex:1;resize:vertical;min-height:48px;font-size:14px}
+.chat-in .btn{margin:0;height:48px;padding:0 20px}
+.chat-foot{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:8px}.chat-foot .hint{font-size:11.5px}
+@media (max-width:860px){.chat-card{min-height:0}.chat-log{max-height:55vh}.msg .bub{max-width:92%}.chat-foot{flex-direction:column;align-items:stretch}.busy-pill b{display:none}}
+
 /* ===== 웹 버전 ===== */
 .wl{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#F8FAFC;padding:20px}
 .wl.hidden{display:none}
@@ -2252,13 +2291,13 @@ table.dt td small{display:block}
 <label class="fl"><span>비밀번호</span><input class="field" name="password" type="password" required autocomplete="current-password"></label>
 <button class="btn" id="wlBtn" type="submit">로그인</button><p class="wl-st" id="wlSt" role="status"></p>
 <p class="wl-note">팀 내부 전용입니다. 계정은 외환사업부 관리자에게 받으세요.</p></form></div>
-<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span>팀 공용 계정</span><button type="button" onclick="fxWebLogout()">로그아웃</button></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
+<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>실무 Q&amp;A</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span>팀 공용 계정</span><button type="button" onclick="fxWebLogout()">로그아웃</button></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><button type="button" class="busy-pill hidden" id="busyPill" data-nav="ask" title="진행 중인 화면으로 이동"><span class="spin" aria-hidden="true"></span><b id="busyL">AI 검토 중</b><em id="busyT"></em></button><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
 <dialog id="claudeDlg" style="max-width:520px"><div class="d-hd"><b>Claude AI 연결</b><button class="btn ghost sm" id="claudeX" type="button">닫기</button></div><div class="d-bd" id="claudeB"></div></dialog>
 
 
 <div class="wrap single" id="tab-home">
   <div class="ticker" aria-label="오늘의 고시환율">
-    <div class="tk-head"><b>고시환율</b><span id="homeFxSrc"></span></div>
+    <div class="tk-head"><div class="tk-t"><b>고시환율</b><span class="tk-date" id="homeFxDate">-</span></div><span id="homeFxSrc">서울외국환중개 최초고시 매매기준율</span></div>
     <div class="tk-items" id="homeFx"><span class="hint">불러오는 중…</span></div>
     <button type="button" class="tk-more" data-nav="calc">전체 환율</button>
   </div>
@@ -2347,9 +2386,20 @@ table.dt td small{display:block}
     <div class="banner">검토 결과는 업무 참고용 1차 검토입니다. 공식 유권해석은 재정경제부 외환제도과, 한국은행 외환심사팀 회신을 따르고, 근거 조문은 원문으로 확인하세요.</div>
   </div>
   <aside class="col">
-    <section class="panel"><div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">내 최근 검토</h2><button class="btn ghost sm" id="toCases" type="button">전체 내역</button></div><div class="hist" id="hist"><span class="hint">아직 검토한 내역이 없습니다.</span></div></section>
+    <section class="panel"><div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">팀 최근 검토</h2><button class="btn ghost sm" id="toCases" type="button">전체 내역</button></div><div class="hist" id="hist"><span class="hint">아직 검토한 내역이 없습니다.</span></div></section>
     <div class="hidden"><div class="law" id="lawState"></div></div>
   </aside>
+</div>
+
+<div class="wrap single hidden" id="tab-chat">
+  <section class="card chat-card">
+    <div class="card-h"><h2>무엇이든 물어보세요</h2><span class="hint">서류 보는 법, 전산·창구 처리, 용어, 수출입·송금·환전 실무. 원문에 근거가 있으면 조문을 함께 보여 줍니다.</span></div>
+    <div class="banner warn hidden" id="chatUnavail"></div>
+    <div class="chat-log" id="chatLog" aria-live="polite"></div>
+    <div class="chat-sugg" id="chatSugg"><button type="button" class="qtag" data-cq="수출입신고필증에서 자사 FOB와 타사 FOB 금액은 어떻게 확인하나요?">수출입신고필증에서 자사 FOB와 타사 FOB 금액은 어떻게 확인하나요?</button><button type="button" class="qtag" data-cq="송금방식 수입대금을 보낼 때 받아야 할 증빙서류는 무엇인가요?">송금방식 수입대금을 보낼 때 받아야 할 증빙서류는 무엇인가요?</button><button type="button" class="qtag" data-cq="외국인 근로자 급여 송금 때 취득경위 입증서류는 어떻게 확인하나요?">외국인 근로자 급여 송금 때 취득경위 입증서류는 어떻게 확인하나요?</button><button type="button" class="qtag" data-cq="해외직접투자 신고 후 사후관리 보고는 언제까지 받나요?">해외직접투자 신고 후 사후관리 보고는 언제까지 받나요?</button><button type="button" class="qtag" data-cq="수출대금을 미리 받았는데(선수금) 수출이 취소되면 어떻게 처리하나요?">수출대금을 미리 받았는데(선수금) 수출이 취소되면 어떻게 처리하나요?</button><button type="button" class="qtag" data-cq="환전할 때 여권에 매각 사실을 적어야 하는 경우는?">환전할 때 여권에 매각 사실을 적어야 하는 경우는?</button></div>
+    <div class="chat-in"><label class="sr" for="chatQ">질문</label><textarea id="chatQ" class="field" rows="2" placeholder="예) 수출입신고필증에서 자사 FOB와 타사 FOB 금액은 어떻게 확인하나요?"></textarea><button type="button" class="btn" id="chatSend">보내기</button></div>
+    <div class="chat-foot"><span class="hint">Enter 보내기 · Shift+Enter 줄바꿈 · 고객 실명·주민번호·계좌번호는 적지 마세요(번호 형식은 자동으로 가립니다). 거래 건의 신고 판단은 'AI 거래 검토'를 쓰세요.</span><button type="button" class="btn ghost sm" id="chatClear">대화 지우기</button></div>
+  </section>
 </div>
 
 <div class="wrap single hidden" id="tab-cases"><section class="panel">
@@ -2362,7 +2412,7 @@ table.dt td small{display:block}
     <select class="field" id="cfv" aria-label="판정"><option value="">판정 전체</option><option>신고 불요</option><option>신고 필요</option><option>신고수리 필요</option><option>사후보고</option><option>확인 필요</option></select>
     <select class="field" id="cfr" aria-label="검수 상태"><option value="">검수 전체</option><option value="none">미검수</option><option value="approved">검수 완료</option><option value="official">공식 회신</option><option value="needs_fix">수정 필요</option></select>
     <select class="field" id="cfm" aria-label="검토자"><option value="">팀 전체</option><option value="me">내 검토만</option></select>
-    <select class="field" id="cfp" aria-label="기간"><option value="1m" selected>최근 1개월</option><option value="3m">최근 3개월</option><option value="y">올해</option><option value="all">전체 기간</option><option value="custom">직접 지정</option></select>
+    <select class="field" id="cfp" aria-label="기간"><option value="1m">최근 1개월</option><option value="3m">최근 3개월</option><option value="y">올해</option><option value="all" selected>전체 기간</option><option value="custom">직접 지정</option></select>
     <input class="field" type="date" id="cfd1" aria-label="시작일">
     <input class="field" type="date" id="cfd2" aria-label="종료일">
   </div>
@@ -2672,7 +2722,7 @@ document.addEventListener("click", e => {
 });
 
 /* ---------- 탭 ---------- */
-const TABS = ["home","ask","cases","calc","forms","src","info","admin"];
+const TABS = ["home","ask","chat","cases","calc","forms","src","info","admin"];
 function showTab(k){
   if (!TABS.includes(k) || (k === "admin" && !window.__owner)) k = "home";
   document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === k));
@@ -2738,8 +2788,8 @@ function loadLocalCases(){ try { return JSON.parse(localStorage.getItem("fxdesk.
 function allCases(){ const local = loadLocalCases().map(c => ({ ...c, local:true })); return CASES.concat(local).sort((a, b) => (b.createdMs || 0) - (a.createdMs || 0)); }
 function caseVerdict(c){ return c.verdict && Object.keys(c.verdict).length ? c.verdict : (splitVerdict(c.answer || "").v || {}); }
 function renderHist(){
-  const mine = allCases().filter(c => c.local || c.author === me).slice(0, 6);
-  $("#hist").innerHTML = mine.length ? mine.map(c => `<button type="button" data-case="${esc(c.id)}"><span>${esc(c.type || "")} · ${esc(caseVerdict(c)["신고여부"] || "확인 필요")}</span>${esc(String(c.q || "").slice(0, 70))}</button>`).join("") : '<span class="hint">아직 검토한 내역이 없습니다.</span>';
+  const mine = allCases().slice(0, 8);
+  $("#hist").innerHTML = mine.length ? mine.map(c => `<button type="button" data-case="${esc(c.id)}"><span>${esc([c.branch, c.staff].filter(Boolean).join(" ") || "팀")} · ${esc(String(c.type || "").split(" · ").pop())} · ${esc(caseVerdict(c)["신고여부"] || "확인 필요")}</span>${esc(String(c.q || "").slice(0, 70))}</button>`).join("") : '<span class="hint">아직 검토한 내역이 없습니다.</span>';
 }
 renderHist();
 
@@ -3022,8 +3072,11 @@ async function start(){
 /* ---------- 진행 단계 표시 ---------- */
 const PSTEPS = [["triage","질의 확인"],["search","원문 검색"],["read","조문 확인"],["verdict","판정 정리"],["write","상세 작성"]];
 let progT = null, progStart = 0, progCur = "";
+function busyOn(label, tab){ const b = $("#busyPill"); if (!b) return; $("#busyL").textContent = label; b.dataset.nav = tab || "ask"; b.classList.remove("hidden"); }
+function busyOff(){ const b = $("#busyPill"); if (b) b.classList.add("hidden"); }
 function prog(k){
   const el = $("#prog"); el.classList.remove("hidden");
+  busyOn("AI 검토 중", "ask"); $("#askBtn").classList.add("is-busy"); $("#askBtn").setAttribute("aria-busy", "true");
   if (!progStart){ progStart = Date.now(); clearInterval(progT); progT = setInterval(progPaint, 1000); }
   const ni = PSTEPS.findIndex(s => s[0] === k), ci = PSTEPS.findIndex(s => s[0] === progCur);
   if (ni > ci) progCur = k;
@@ -3031,9 +3084,11 @@ function prog(k){
 }
 function progPaint(){
   const i = PSTEPS.findIndex(s => s[0] === progCur);
-  $("#prog").innerHTML = PSTEPS.map((s, j) => `<li class="${j < i ? "done" : j === i ? "on" : ""}">${s[1]}</li>`).join("") + `<li class="t">${Math.round((Date.now() - progStart) / 1000)}초 경과</li>`;
+  const sec = Math.round((Date.now() - progStart) / 1000);
+  $("#prog").innerHTML = `<li class="busy"><span class="spin" aria-hidden="true"></span>AI 검토 중</li>` + PSTEPS.map((s, j) => `<li class="${j < i ? "done" : j === i ? "on" : ""}">${s[1]}</li>`).join("") + `<li class="t">${sec}초 경과</li>`;
+  if ($("#busyT")) $("#busyT").textContent = sec + "초";
 }
-function progDone(){ clearInterval(progT); progT = null; progStart = 0; progCur = ""; $("#prog").classList.add("hidden"); }
+function progDone(){ clearInterval(progT); progT = null; progStart = 0; progCur = ""; $("#prog").classList.add("hidden"); busyOff(); $("#askBtn").classList.remove("is-busy"); $("#askBtn").removeAttribute("aria-busy"); }
 
 /* ---------- 결과 보기 도우미 ---------- */
 let viewMode = (() => { try { return localStorage.getItem("fxdesk.view") || "sum"; } catch { return "sum"; } })();
@@ -3511,7 +3566,7 @@ function openCase(id){
 $("#caseX").onclick = () => $("#caseDlg").close();
 $("#cft").insertAdjacentHTML("beforeend", TYPES.filter(t => t.grp).map(g => `<optgroup label="${esc(g.n)}"><option value="${g.k}">${esc(g.n)} 전체</option>${TYPES.filter(t => t.g === g.k && !t.grp).map(t => `<option value="${t.k}">${esc(t.s)}</option>`).join("")}</optgroup>`).join(""));
 function setPeriod(){ const p = $("#cfp").value, now = Date.now(); $("#cfd2").value = ""; $("#cfd1").value = p === "1m" ? kstDay(now - 30 * 864e5) : p === "3m" ? kstDay(now - 91 * 864e5) : p === "y" ? TODAY.slice(0, 4) + "-01-01" : ""; renderCases(); }
-$("#cfp").addEventListener("change", setPeriod); $("#cfd1").value = kstDay(Date.now() - 30 * 864e5);
+$("#cfp").addEventListener("change", setPeriod); $("#cfd1").value = "";
 ["#cfd1","#cfd2"].forEach(s => $(s).addEventListener("change", () => { $("#cfp").value = "custom"; }));
 ["#cfq","#cft","#cfv","#cfr","#cfm","#cfd1","#cfd2"].forEach(s => { $(s).addEventListener("input", renderCases); $(s).addEventListener("change", renderCases); });
 $("#toCases").onclick = () => showTab("cases");
@@ -4204,6 +4259,70 @@ $("#hqFile").onchange = e => { const fs = [...e.target.files]; e.target.value = 
   if (!imgLimit){ $("#hqSt").textContent = "이 화면에서는 서류 첨부를 쓸 수 없습니다. Claude에 로그인한 뒤 다시 시도하세요."; return; }
   addFiles("ask", fs); $("#hqSt").textContent = `서류 ${fs.length}건을 열었습니다. 개인정보를 가린 뒤 '가림 완료'를 누르면 원본은 파기되고 가린 사본만 남습니다.`; };
 
+/* ---------- 외환 실무 Q&A 챗봇 ---------- */
+const CHAT_RULES = () => `당신은 전북은행 외환사업부와 영업점 외환 창구 직원을 돕는 '외환 실무 Q&A' 도우미입니다. 오늘은 ${TODAY}입니다.
+[답변 원칙]
+1. 질문은 서류 보는 법(예: 수출입신고필증·인보이스·B/L·신용장의 항목), 전산·창구 처리 순서, 용어, 수출입·송금·환전·외화예금·외국인투자 실무 등 다양합니다. 결론을 먼저 한두 문장으로 쓰고, 필요하면 확인 순서나 서류에서 볼 곳을 번호 목록으로 쓰세요.
+2. 외국환거래법·시행령·규정·취급지침 등 제공된 원문에 근거가 있으면 search_texts와 read_text로 확인하고 [규정 제X-X조], [지침 p.N], [법 제N조], [시행령 제N조] 형식으로 인용하세요.
+3. 원문에 없는 실무 지식(관세·무역 서류 양식, 은행 일반 관행 등)은 일반 지식으로 답하되 그 문장 끝에 〔일반 참고·원문 미확인〕을 붙이세요. 서류의 칸 번호·항목명, 금액 기준, 조문 번호를 확실히 모르면 지어내지 말고 "확실하지 않음"이라고 밝힌 뒤 확인할 곳(서류 원본, 관세청 UNI-PASS, 외환사업부 등)을 알려 주세요.
+4. 특정 거래의 신고 여부·신고기관 판단이 필요한 질문이면 요점만 답하고 'AI 거래 검토' 메뉴로 정식 검토를 받으라고 안내하세요.
+5. 고객 개인정보는 다루지 마세요. 한국어로 간결하게, 창구 직원이 바로 따라 할 수 있게 쓰세요. '지급신청서' 대신 '송금신청서'라고 쓰세요.
+${(() => { const a = RULES.indexOf("[창구 핵심 기준"), b = RULES.indexOf("[최신 개정사항"); return a > 0 && b > a ? RULES.slice(a, b) : ""; })()}
+[최신 개정사항]
+${AMEND.join("\n")}`;
+let CHAT = (() => { try { return JSON.parse(localStorage.getItem("fxdesk.chat") || "[]"); } catch { return []; } })(), chatBusy = false, chatCtl = null;
+function chatSave(){ try { localStorage.setItem("fxdesk.chat", JSON.stringify(CHAT.slice(-30))); } catch {} }
+function chatRefs(text){ const re = new RegExp("\\[" + REF_RE + "\\]", "g"), out = []; let m; while ((m = re.exec(text || ""))) if (byId[m[1]] && !out.includes(m[1])) out.push(m[1]); return out; }
+function chatMsgHTML(m){
+  if (m.role === "user") return `<div class="msg me"><div class="bub">${esc(m.text).replace(/\n/g, "<br>")}</div></div>`;
+  const refs = chatRefs(m.text);
+  return `<div class="msg ai"><span class="av" aria-hidden="true">환</span><div class="bub">${m.text ? md(m.text) : ""}${refs.length ? `<div class="chat-refs"><span>근거 원문</span>${refs.map(id => `<a class="ref" data-id="${esc(id)}">${esc(id)}</a>`).join("")}</div>` : ""}${m.err ? `<p class="chat-err">${esc(m.err)}</p>` : ""}</div></div>`;
+}
+function chatRender(pendingText, stepTxt){
+  const log = $("#chatLog");
+  log.innerHTML = (CHAT.length ? CHAT.map(chatMsgHTML).join("") : `<div class="chat-empty"><b>외환 실무 Q&A</b><p>창구에서 궁금한 것을 편하게 물어보세요. 아래 예시를 눌러도 됩니다.</p></div>`)
+    + (pendingText != null ? `<div class="msg ai pending"><span class="av" aria-hidden="true">환</span><div class="bub">${pendingText ? md(pendingText) : ""}<div class="typing"><span class="spin" aria-hidden="true"></span><span>${esc(stepTxt || "답변을 준비하고 있습니다…")}</span></div></div></div>` : "");
+  $("#chatSugg").classList.toggle("hidden", CHAT.length > 0);
+  log.scrollTop = log.scrollHeight;
+}
+function chatClear(){ if (chatCtl && chatBusy) chatCtl.abort(); CHAT = []; chatSave(); chatRender(); $("#chatQ").value = ""; }
+async function chatSend(text){
+  const raw = String(text != null ? text : $("#chatQ").value).trim(); if (!raw) return;
+  if (chatBusy) return;
+  if (!sample){
+    if (window.__WEB && typeof toClaude === "function"){ toClaude(raw, t => { $("#chatUnavail").innerHTML = esc(t); $("#chatUnavail").classList.remove("hidden"); }); return; }
+    $("#chatUnavail").textContent = sampleReady ? "실무 Q&A는 Claude에 로그인해야 쓸 수 있습니다. 로그인한 뒤 이 화면을 다시 열어 주세요." : "Claude 연결을 준비하고 있습니다. 잠시 뒤 다시 눌러 주세요."; $("#chatUnavail").classList.remove("hidden"); return;
+  }
+  if (busy){ $("#chatUnavail").textContent = "AI 거래 검토가 진행 중입니다. 끝난 뒤 다시 보내 주세요."; $("#chatUnavail").classList.remove("hidden"); return; }
+  $("#chatUnavail").classList.add("hidden");
+  const pm = maskPII(raw), q = pm.text;
+  CHAT.push({ role:"user", text:q }); $("#chatQ").value = ""; chatBusy = true; $("#chatSend").disabled = true; $("#chatSend").classList.add("is-busy");
+  busyOn("AI 답변 중", "chat"); const t0 = Date.now(); const tick = setInterval(() => { if ($("#busyT")) $("#busyT").textContent = Math.round((Date.now() - t0) / 1000) + "초"; }, 1000);
+  let partial = "", stepTxt = pm.hits.length ? `${pm.hits.join(", ")}로 보이는 내용을 가리고 보냈습니다. 답변을 준비하고 있습니다…` : "";
+  chatRender("", stepTxt);
+  chatCtl = new AbortController();
+  const hist = CHAT.slice(0, -1).slice(-8).filter(m => m.text && !m.err).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
+  let userMsg = q; const opts = { cache:false, signal:chatCtl.signal, modelTier:"default", onText: ({text}) => { partial = text; chatRender(partial, "작성 중…"); } };
+  if (canTools){ agRefs = new Set(); agPrecs = new Map(); opts.tools = agTools(s => { stepTxt = s; chatRender(partial, s); }); userMsg += "\n\n관련 원문이 있을 수 있으면 search_texts로 찾아 read_text로 확인한 뒤 답하세요. 원문과 무관한 순수 실무 질문이면 바로 답하세요."; }
+  else { const { ctx } = contextFor(q, 5, 3000); userMsg += `\n\n[검색된 관련 원문]${ctx || "\n(검색 결과 없음)"}`; }
+  const msgs = [{ role:"user", content:CHAT_RULES() }, ...hist, { role:"user", content:userMsg }];
+  try {
+    const { text } = await sample(msgs, opts);
+    CHAT.push({ role:"ai", text: text || partial });
+  } catch (e) {
+    CHAT.push({ role:"ai", text: (e && e.text) || partial, err: e && e.name === "AbortError" ? "답변을 멈췄습니다." : fail(e) });
+  } finally {
+    clearInterval(tick); chatBusy = false; agRefs = null; agPrecs = null; $("#chatSend").disabled = false; $("#chatSend").classList.remove("is-busy");
+    if (!busy) busyOff(); chatSave(); chatRender();
+  }
+}
+$("#chatSend").onclick = () => chatSend();
+$("#chatQ").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); chatSend(); } });
+$("#chatSugg").addEventListener("click", e => { const b = e.target.closest("[data-cq]"); if (b) chatSend(b.dataset.cq); });
+$("#chatClear").onclick = chatClear;
+if (window.__WEB){ $("#chatUnavail").innerHTML = `<b>웹 사이트에서는 실무 Q&A를 Claude 화면에서 이어서 합니다.</b> 질문을 보내면 내용을 복사하고 Claude 화면을 엽니다. 거기서 '실무 Q&A' 메뉴에 붙여 넣으세요.`; $("#chatUnavail").classList.remove("hidden"); }
+chatRender();
+
 /* ---------- 웹 버전: AI 검토는 Claude 화면으로 ---------- */
 async function toClaude(q, say){
   let copied = false; try { await navigator.clipboard.writeText(maskPII(q).text); copied = true; } catch {}
@@ -4304,7 +4423,8 @@ function renderHome(){
     const d = RATES.latest, r = RATES.rates[d], i = RDAYS.indexOf(d), p = i > 0 ? RATES.rates[RDAYS[i - 1]] : null;
     $("#homeFx").innerHTML = ["USD","JPY","EUR","CNH"].filter(c => r[c]).map(c => { const df = p && p[c] != null ? r[c] - p[c] : 0;
       return `<div class="tk"><span class="tk-c">${c}${unitOf(c) > 1 ? `<small>(${unitOf(c)})</small>` : ""}</span><b>${fmtN(r[c])}</b><em class="${df > 0 ? "up" : df < 0 ? "down" : ""}">${df > 0 ? "▲" : df < 0 ? "▼" : ""}${df ? fmtN(Math.abs(df)) : "0.00"}</em></div>`; }).join("");
-    $("#homeFxSrc").innerHTML = `${esc(d.slice(5).replace("-", "."))} 서울외국환중개 최초고시 매매기준율` + (rateLag() ? ` · <span class="tk-lag">${esc(rateLag())}</span>` : "");
+    $("#homeFxDate").textContent = `${d.replace(/-/g, ".")} (${"일월화수목금토"[new Date(d + "T12:00:00+09:00").getDay()]})`;
+    $("#homeFxSrc").innerHTML = `서울외국환중개 최초고시 · 매매기준율(원)` + (rateLag() ? `<br><span class="tk-lag">${esc(rateLag())}</span>` : "");
     const hc = $("#hcCur"); if (hc && !hc.options.length){ const ks = Object.keys(r).filter(k => /^[A-Z]{3}$/.test(k)); const ord = ["USD","EUR","JPY","CNH","GBP"]; ks.sort((a, b) => ((ord.indexOf(a) + 1) || 99) - ((ord.indexOf(b) + 1) || 99) || a.localeCompare(b)); hc.innerHTML = ["USD", "KRW"].concat(ks.filter(k => k !== "USD")).map(k => `<option value="${k}">${esc(k === "KRW" ? "KRW 원화" : k)}</option>`).join(""); }
     hcCalc();
   }
@@ -4386,13 +4506,14 @@ updDelBar();
 
 /* ---------- 메뉴별 입력 초기화 ---------- */
 const RESETS = {
+  chat: () => chatClear(),
   ask: () => { if (ctl && busy) ctl.abort(); $("#newBtn").click(); curType = TYPES[0]; renderTypes(); $("#custName").value = ""; $("#branchName").value = ""; $("#staffName").value = ""; try { localStorage.removeItem("fxdesk.branch"); localStorage.removeItem("fxdesk.staff"); } catch {} $("#cur").value = "USD"; $("#deep").checked = false; updAmtUsd(); progDone(); setStatus(""); $("#piiWarn").classList.add("hidden"); },
-  cases: () => { ["#cfq","#cft","#cfv","#cfr","#cfm"].forEach(s => { $(s).value = ""; }); $("#cfp").value = "1m"; CSEL.clear(); setPeriod(); updDelBar(); },
+  cases: () => { ["#cfq","#cft","#cfv","#cfr","#cfm"].forEach(s => { $(s).value = ""; }); $("#cfp").value = "all"; CSEL.clear(); setPeriod(); updDelBar(); },
   calc: () => { txNow = { date:TODAY, cur:"USD", amt:"" }; txPrev = []; $("#prevUsd").value = ""; $("#scen").selectedIndex = 0; $("#calcStatus").textContent = ""; renderTx(); },
   forms: () => { $("#fq").value = ""; $("#fstatus").textContent = ""; renderForms(); },
   src: () => { $("#srcq").value = ""; $("#srcf").value = ""; $("#srcres").innerHTML = ""; $("#srccnt").textContent = ""; }
 };
-const TAB_TITLE = { home:"외환 업무 대시보드", ask:"AI 거래 검토", cases:"검토 내역", calc:"한도 계산", forms:"서식함", src:"원문 검색", info:"기준 법령", admin:"관리" };
+const TAB_TITLE = { home:"외환 업무 대시보드", chat:"외환 실무 Q&A", ask:"AI 거래 검토", cases:"검토 내역", calc:"한도 계산", forms:"서식함", src:"원문 검색", info:"기준 법령", admin:"관리" };
 for (const [k, title] of Object.entries(TAB_TITLE)){
   const w = $("#tab-" + k); if (!w) continue;
   w.insertAdjacentHTML("afterbegin", `<div class="tab-top"><h1${k === "home" ? ` data-day="${TODAY.replace(/-/g, ".")} 기준"` : ""}>${title}</h1>${RESETS[k] ? `<button class="btn ghost sm" type="button" data-reset="${k}">↺ 입력 초기화</button>` : ""}</div>`);
