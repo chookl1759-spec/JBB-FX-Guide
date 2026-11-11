@@ -18,6 +18,15 @@
     claudeUrl: "https://claude.ai/artifact/DDnczYEeDHT7s2JAFxYb3J"
   };
   window.__WEB = true;
+  /* 외환사업부 직원 행번 → 실명 (219094 추현수: 관리자) */
+  var STAFF = window.FX_STAFF = { "196046":"김지아", "211022":"고효영", "213013":"강미선", "218115":"강유진", "219094":"추현수" };
+  var ADMIN_EMPNO = { "219094": true };
+  var EMAIL_DOMAIN = "jbb.co.kr";
+  function empOf(email){ var m = String(email || "").toLowerCase().match(/^(\d{6})@jbb\.co\.kr$/); return m ? m[1] : ""; }
+  function meInfo(){
+    var u = session && session.user, email = u && u.email || "", emp = empOf(email), md = (u && u.user_metadata) || {};
+    return { empno: emp, name: STAFF[emp] || md.name || (email ? email.split("@")[0] : ""), email: email };
+  }
   var sb = null, session = null, ready = null;
 
   function client(){
@@ -27,24 +36,28 @@
     }
     return sb;
   }
-  function isAdmin(){ var m = session && session.user && session.user.app_metadata; return !!(m && m.role === "admin"); }
+  function isAdmin(){ var m = session && session.user && session.user.app_metadata; return !!(m && m.role === "admin") || !!ADMIN_EMPNO[meInfo().empno]; }
 
   /* ---- 로그인 화면 ---- */
   function loginWall(){
     return new Promise(function(resolve){
       var w = document.getElementById("webLogin"); w.classList.remove("hidden");
       var f = document.getElementById("wlForm"), st = document.getElementById("wlSt"), btn = document.getElementById("wlBtn");
-      try { var last = localStorage.getItem("fxweb.email"); if (last) f.email.value = last; } catch(e){}
-      (f.email.value ? f.password : f.email).focus();
+      try { var last = localStorage.getItem("fxweb.empno"); if (last) f.empno.value = last; } catch(e){}
+      (f.empno.value ? f.password : f.empno).focus();
       f.onsubmit = async function(ev){
         ev.preventDefault(); btn.disabled = true; st.textContent = "로그인 중…";
         try {
-          var r = await client().auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
+          var id = f.empno.value.trim().replace(/\s+/g, ""), email;
+          if (/^\d{6}$/.test(id)) email = id + "@" + EMAIL_DOMAIN;
+          else if (/@/.test(id)) email = id;   // 기존 이메일 계정도 그대로 로그인
+          else { st.textContent = "행번 6자리를 입력해 주세요. (예: 219094)"; btn.disabled = false; return; }
+          var r = await client().auth.signInWithPassword({ email: email, password: f.password.value });
           if (r.error) throw r.error;
-          try { localStorage.setItem("fxweb.email", f.email.value.trim()); } catch(e){}
+          try { localStorage.setItem("fxweb.empno", id); } catch(e){}
           f.password.value = ""; w.classList.add("hidden"); st.textContent = ""; resolve(r.data.session);
         } catch (e) {
-          st.textContent = /Invalid login/i.test(e && e.message || "") ? "이메일 또는 비밀번호가 맞지 않습니다." : "로그인하지 못했습니다. 잠시 뒤 다시 시도하세요.";
+          st.textContent = /Invalid login/i.test(e && e.message || "") ? "행번 또는 비밀번호가 맞지 않습니다." : "로그인하지 못했습니다. 잠시 뒤 다시 시도하세요.";
         } finally { btn.disabled = false; }
       };
     });
@@ -55,10 +68,37 @@
       session = r && r.data && r.data.session;
       if (!session) session = await loginWall();
       c.auth.onAuthStateChange(function(ev, s){ if (ev === "SIGNED_OUT"){ location.reload(); } else if (s) session = s; });
+      afterLogin();
       return session;
     })();
     return ready;
   }
+  /* 로그인한 직원 이름을 화면에 표시하고, 이용자 기록(users/{uid})에 이름·행번을 남깁니다 */
+  function afterLogin(){
+    var me = window.FX_ME = meInfo();
+    function paint(){
+      var w = document.getElementById("webUser"); if (w){ w.innerHTML = '<span aria-hidden="true">👤</span> <b></b>' + (me.empno ? ' <small></small>' : ''); w.querySelector("b").textContent = me.name + " 님"; if (me.empno) w.querySelector("small").textContent = me.empno; w.classList.remove("hidden"); }
+      var a = document.getElementById("webAcct"); if (a) a.textContent = me.name + (me.empno ? " (" + me.empno + ")" : "");
+      var sf = document.getElementById("staffName"); if (sf && !sf.value.trim() && me.empno){ sf.value = me.name; try { localStorage.setItem("fxdesk.staff", me.name); } catch(e){} }
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", paint); else paint();
+    (async function(){
+      try {
+        var uid = session.user.id, r = await client().from(CFG.table).select("data").eq("coll", "users").eq("id", uid).maybeSingle();
+        var cur = (r && r.data && r.data.data) || {};
+        if (cur.name === me.name && cur.empno === me.empno) return;
+        await client().from(CFG.table).upsert({ coll:"users", id: uid, data: Object.assign({}, cur, { name: me.name, empno: me.empno }), created_ms: Date.now() }, { onConflict:"coll,id" });
+      } catch(e){}
+    })();
+  }
+  window.fxWebChangePw = async function(){
+    var p1 = window.prompt("새 비밀번호를 입력하세요 (8자 이상, 영문·숫자·특수문자 조합 권장)"); if (p1 == null) return;
+    if (p1.length < 8){ alert("비밀번호는 8자 이상이어야 합니다."); return; }
+    var p2 = window.prompt("새 비밀번호를 한 번 더 입력하세요"); if (p2 == null) return;
+    if (p1 !== p2){ alert("두 번 입력한 비밀번호가 다릅니다."); return; }
+    try { var r = await client().auth.updateUser({ password: p1 }); if (r.error) throw r.error; alert("비밀번호를 바꿨습니다. 다음 로그인부터 새 비밀번호를 쓰세요."); }
+    catch (e) { alert("비밀번호를 바꾸지 못했습니다: " + ((e && e.message) || "오류")); }
+  };
   window.fxWebLogout = async function(){ try { await client().auth.signOut(); } catch(e){} location.reload(); };
 
   /* ---- Firestore 비슷한 문서 DB를 fx_docs 표 하나로 ---- */
@@ -151,7 +191,13 @@
   var USER = {
     id: async function(){ await start(); return session.user.id; },
     isOwner: async function(){ await start(); return isAdmin(); },
-    profiles: async function(ids){ return {}; }
+    profiles: async function(ids){
+      var out = {}; ids = (ids || []).filter(Boolean); if (!ids.length) return out;
+      try { await start(); var r = await client().from(CFG.table).select("id,data").eq("coll", "users").in("id", ids);
+        (r.data || []).forEach(function(x){ if (x.data && x.data.name) out[x.id] = { name: x.data.name }; }); } catch(e){}
+      if (session && window.FX_ME) out[session.user.id] = { name: window.FX_ME.name };
+      return out;
+    }
   };
 
   /* ---- 파일 저장: 브라우저 기본 다운로드 ---- */
@@ -2277,21 +2323,21 @@ table.dt td small{display:block}
 .wl-brand b{display:block;font-size:18px;color:#0F172A}.wl-brand span{font-size:12.5px;color:#64748B}
 .wl-card .btn{width:100%;margin:4px 0 0;padding:11px}
 .wl-st{min-height:1em;margin:0;font-size:12.5px;color:#B91C1C}.wl-note{margin:0;font-size:11.5px;color:#64748B}
-.web-acct{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0 0 10px;font-size:11.5px}
+.web-acct{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;margin:0 0 10px;font-size:11.5px}
 .web-acct button{background:none;border:1px solid var(--line);border-radius:7px;padding:3px 8px;font-size:11.5px;color:var(--sub)}
 .web-acct button:hover{color:var(--accent);border-color:var(--accent)}
 .banner a.btn{display:inline-block;margin:8px 0 0;text-decoration:none;color:#fff}
-</style>
+.tb-user{display:inline-flex;align-items:center;gap:5px;margin-left:auto;margin-right:8px;font-size:13px;color:var(--ink);white-space:nowrap}.tb-user small{color:var(--sub);font-variant-numeric:tabular-nums}.tb-user.hidden{display:none}.tb-user + .busy-pill{margin-left:0}@media (max-width:520px){.tb-user small{display:none}}</style>
 <style id="sheetCss"></style>
 </head>
 <body>
 <div id="webLogin" class="wl hidden" role="dialog" aria-modal="true" aria-labelledby="wlT"><form id="wlForm" class="wl-card" autocomplete="on">
-<div class="wl-brand"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#003087"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b id="wlT">JB 환이</b><span>외환사업부 팀 공용 로그인</span></div></div>
-<label class="fl"><span>이메일</span><input class="field" name="email" type="email" required autocomplete="username"></label>
+<div class="wl-brand"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#003087"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b id="wlT">JB 환이</b><span>외환사업부 직원 로그인</span></div></div>
+<label class="fl"><span>행번 (사번 6자리)</span><input class="field" name="empno" type="text" inputmode="numeric" maxlength="40" placeholder="예: 219094" required autocomplete="username"></label>
 <label class="fl"><span>비밀번호</span><input class="field" name="password" type="password" required autocomplete="current-password"></label>
 <button class="btn" id="wlBtn" type="submit">로그인</button><p class="wl-st" id="wlSt" role="status"></p>
-<p class="wl-note">팀 내부 전용입니다. 계정은 외환사업부 관리자에게 받으세요.</p></form></div>
-<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>실무 Q&amp;A</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span>팀 공용 계정</span><button type="button" onclick="fxWebLogout()">로그아웃</button></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><button type="button" class="busy-pill hidden" id="busyPill" data-nav="ask" title="진행 중인 화면으로 이동"><span class="spin" aria-hidden="true"></span><b id="busyL">AI 검토 중</b><em id="busyT"></em></button><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
+<p class="wl-note">외환사업부 직원 전용입니다. 첫 로그인 후 왼쪽 아래 「비밀번호 변경」으로 꼭 바꿔 주세요.</p></form></div>
+<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>실무 Q&amp;A</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span id="webAcct">로그인 중…</span><span><button type="button" onclick="fxWebChangePw()">비밀번호 변경</button> <button type="button" onclick="fxWebLogout()">로그아웃</button></span></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><span class="tb-user hidden" id="webUser"></span><button type="button" class="busy-pill hidden" id="busyPill" data-nav="ask" title="진행 중인 화면으로 이동"><span class="spin" aria-hidden="true"></span><b id="busyL">AI 검토 중</b><em id="busyT"></em></button><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
 <dialog id="claudeDlg" style="max-width:520px"><div class="d-hd"><b>Claude AI 연결</b><button class="btn ghost sm" id="claudeX" type="button">닫기</button></div><div class="d-bd" id="claudeB"></div></dialog>
 
 
@@ -3448,7 +3494,7 @@ async function fillNames(root){
   const els = [...root.querySelectorAll("[data-uid]")];
   const ids = [...new Set(els.map(e => e.dataset.uid).filter(x => x && x !== me && !(x in NAMES)))];
   if (ids.length && userCap && userCap.profiles){ try { const ps = await userCap.profiles(ids); ids.forEach(id => { NAMES[id] = (ps && ps[id] && ps[id].name) || ""; }); } catch { ids.forEach(id => { NAMES[id] = ""; }); } }
-  els.forEach(e => { const id = e.dataset.uid; if (id) e.textContent = id === me ? "나" : (NAMES[id] || "팀원"); });
+  els.forEach(e => { const id = e.dataset.uid; if (id) e.textContent = id === me ? ((window.FX_ME && FX_ME.name) || "나") : (NAMES[id] || e.dataset.fb || "팀원"); });
 }
 function filteredCases(){
   const q = $("#cfq").value.trim(), ty = $("#cft").value, vf = $("#cfv").value, rf = $("#cfr").value, mf = $("#cfm").value, d1 = $("#cfd1").value, d2 = $("#cfd2").value;
@@ -3479,7 +3525,7 @@ function caseRow(c){
     cell("c-res", `<span class="pill ${verdictClass(st)}">${esc(st)}</span>${c.review2 ? ` <span class="r2-mini ${/일치/.test(c.review2.result) ? "ok" : /일부/.test(c.review2.result) ? "warn" : "crit"}">2차: ${esc(c.review2.result)}</span>` : ""}${v["신고유형"] ? `<br><span class="hint">${esc(v["신고유형"])}</span>` : ""}`) +
     cell("c-ag", esc(v["신고기관"] || "")) +
     cell("c-rv", r && RV[r.status] ? `<span class="rv ${esc(r.status)}">${RV[r.status]}</span>${r.note ? `<br><span class="hint">${esc(r.note)}</span>` : ""}` : '<span class="hint">미검수</span>') +
-    cell("c-by", `<span ${c.author ? `data-uid="${esc(c.author)}"` : ""}>${c.local ? "이 브라우저" : "…"}</span>`) + `</tr>`;
+    cell("c-by", `<span ${c.author ? `data-uid="${esc(c.author)}" data-fb="${esc(c.staff || "")}"` : ""}>${c.local ? "이 브라우저" : "…"}</span>`) + `</tr>`;
 }
 function caseItem(c){
   const st = caseVerdict(c)["신고여부"] || "확인 필요", r = REVIEWS[c.id];
