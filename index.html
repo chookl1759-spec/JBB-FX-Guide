@@ -6,6 +6,181 @@
 <script>try{var t=localStorage.getItem("fxdesk.theme2");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
 <title>JB 환이 · 외환 AI 도우미</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* ===== JB 환이 웹(Vercel) 버전: Supabase 연결 ===== */
+(function(){
+  if (window.claude) return;                       // Claude 아티팩트 안에서는 아무것도 바꾸지 않음
+  var CFG = window.FX_WEB = {
+    url: "https://szsfqahpwmrofrjuldxb.supabase.co",
+    key: "sb_publishable_CJB7Dh_RRmNECFyyV46IMQ_oepa4dSi",   // 공개용 키 (RLS로 보호)
+    table: "fx_docs",
+    claudeUrl: "https://claude.ai/artifact/DDnczYEeDHT7s2JAFxYb3J"
+  };
+  window.__WEB = true;
+  var sb = null, session = null, ready = null;
+
+  function client(){
+    if (!sb){
+      if (!window.supabase || !window.supabase.createClient) throw new Error("supabase-js not loaded");
+      sb = window.supabase.createClient(CFG.url, CFG.key, { auth:{ persistSession:true, autoRefreshToken:true } });
+    }
+    return sb;
+  }
+  function isAdmin(){ var m = session && session.user && session.user.app_metadata; return !!(m && m.role === "admin"); }
+
+  /* ---- 로그인 화면 ---- */
+  function loginWall(){
+    return new Promise(function(resolve){
+      var w = document.getElementById("webLogin"); w.classList.remove("hidden");
+      var f = document.getElementById("wlForm"), st = document.getElementById("wlSt"), btn = document.getElementById("wlBtn");
+      try { var last = localStorage.getItem("fxweb.email"); if (last) f.email.value = last; } catch(e){}
+      (f.email.value ? f.password : f.email).focus();
+      f.onsubmit = async function(ev){
+        ev.preventDefault(); btn.disabled = true; st.textContent = "로그인 중…";
+        try {
+          var r = await client().auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
+          if (r.error) throw r.error;
+          try { localStorage.setItem("fxweb.email", f.email.value.trim()); } catch(e){}
+          f.password.value = ""; w.classList.add("hidden"); st.textContent = ""; resolve(r.data.session);
+        } catch (e) {
+          st.textContent = /Invalid login/i.test(e && e.message || "") ? "이메일 또는 비밀번호가 맞지 않습니다." : "로그인하지 못했습니다. 잠시 뒤 다시 시도하세요.";
+        } finally { btn.disabled = false; }
+      };
+    });
+  }
+  function start(){
+    if (!ready) ready = (async function(){
+      var c = client(), r = await c.auth.getSession();
+      session = r && r.data && r.data.session;
+      if (!session) session = await loginWall();
+      c.auth.onAuthStateChange(function(ev, s){ if (ev === "SIGNED_OUT"){ location.reload(); } else if (s) session = s; });
+      return session;
+    })();
+    return ready;
+  }
+  window.fxWebLogout = async function(){ try { await client().auth.signOut(); } catch(e){} location.reload(); };
+
+  /* ---- Firestore 비슷한 문서 DB를 fx_docs 표 하나로 ---- */
+  function err(e){ var x = new Error((e && e.message) || "db error"); x.code = (e && (e.code === "42501" || /row-level security|permission/i.test(e.message || ""))) ? "invalid_argument" : "unavailable"; return x; }
+  var subs = {};                 // coll -> [{cb, err, id?, order, limit}]
+  var channel = null, pollT = null;
+  async function fetchColl(coll, lim){
+    var r = await client().from(CFG.table).select("id,data,created_ms").eq("coll", coll).order("created_ms", { ascending:false }).limit(lim || 1000);
+    if (r.error) throw err(r.error);
+    return r.data || [];
+  }
+  function snapDoc(row){ return { id: row.id, exists: true, metadata:{ fromCache:false }, data: function(){ return row.data || {}; } }; }
+  async function refresh(coll){
+    var list = subs[coll]; if (!list || !list.length) return;
+    var lim = Math.max.apply(null, list.map(function(s){ return s.limit || 1000; }));
+    var rows;
+    try { rows = await fetchColl(coll, lim); } catch (e) { list.forEach(function(s){ if (s.err) s.err(e); }); return; }
+    list.forEach(function(s){
+      if (s.id != null){
+        var hit = rows.find(function(r){ return r.id === s.id; });
+        s.cb(hit ? snapDoc(hit) : { id: s.id, exists: false, metadata:{ fromCache:false }, data: function(){ return undefined; } });
+      } else {
+        var docs = rows.map(snapDoc);
+        if (s.order){ var f = s.order.f, d = s.order.dir === "desc" ? -1 : 1; docs.sort(function(a, b){ var x = a.data()[f], y = b.data()[f]; return x === y ? 0 : (x > y ? d : -d); }); }
+        s.cb({ docs: docs.slice(0, s.limit || 1000), size: docs.length, empty: !docs.length, metadata:{ fromCache:false } });
+      }
+    });
+  }
+  function ensureLive(){
+    if (!channel){
+      try {
+        channel = client().channel("fx_docs_live")
+          .on("postgres_changes", { event:"*", schema:"public", table: CFG.table }, function(p){ var c = (p.new && p.new.coll) || (p.old && p.old.coll); if (c) refresh(c); else Object.keys(subs).forEach(refresh); })
+          .subscribe();
+      } catch(e){}
+    }
+    if (!pollT){
+      pollT = setInterval(function(){ if (!document.hidden) Object.keys(subs).forEach(refresh); }, 30000);
+      document.addEventListener("visibilitychange", function(){ if (!document.hidden) Object.keys(subs).forEach(refresh); });
+    }
+  }
+  function listen(coll, s){
+    (subs[coll] = subs[coll] || []).push(s); ensureLive(); refresh(coll);
+    return function(){ subs[coll] = (subs[coll] || []).filter(function(x){ return x !== s; }); };
+  }
+  function bump(coll){ setTimeout(function(){ refresh(coll); }, 50); }
+  function newId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+  function split(path){ var i = path.indexOf("/"); return [path.slice(0, i), path.slice(i + 1)]; }
+
+  function query(coll, st){
+    return {
+      orderBy: function(f, dir){ return query(coll, Object.assign({}, st, { order:{ f:f, dir:dir || "asc" } })); },
+      limit: function(n){ return query(coll, Object.assign({}, st, { limit:n })); },
+      onSnapshot: function(cb, e){ return listen(coll, { cb:cb, err:e, order:st.order, limit:st.limit }); },
+      get: async function(){ var rows = await fetchColl(coll, st.limit); return { docs: rows.map(snapDoc) }; },
+      add: async function(data){
+        var id = newId(), ms = (data && data.createdMs) || Date.now();
+        var r = await client().from(CFG.table).insert({ coll: coll, id: id, data: data, created_ms: ms });
+        if (r.error) throw err(r.error); bump(coll); return { id: id };
+      }
+    };
+  }
+  function docRef(path){
+    var p = split(path), coll = p[0], id = p[1];
+    return {
+      id: id,
+      get: async function(){
+        var r = await client().from(CFG.table).select("id,data,created_ms").eq("coll", coll).eq("id", id).maybeSingle();
+        if (r.error) throw err(r.error);
+        return r.data ? snapDoc(r.data) : { id:id, exists:false, data:function(){ return undefined; } };
+      },
+      set: async function(data){
+        var r = await client().from(CFG.table).upsert({ coll: coll, id: id, data: data, created_ms: (data && data.createdMs) || Date.now() }, { onConflict:"coll,id" });
+        if (r.error) throw err(r.error); bump(coll);
+      },
+      update: async function(patch){
+        var cur = await this.get(); if (!cur.exists){ var x = new Error("not found"); x.code = "not_found"; throw x; }
+        var r = await client().from(CFG.table).update({ data: Object.assign({}, cur.data(), patch) }).eq("coll", coll).eq("id", id);
+        if (r.error) throw err(r.error); bump(coll);
+      },
+      delete: async function(){
+        var r = await client().from(CFG.table).delete().eq("coll", coll).eq("id", id);
+        if (r.error) throw err(r.error); bump(coll);
+      },
+      onSnapshot: function(cb, e){ return listen(coll, { cb:cb, err:e, id:id }); }
+    };
+  }
+  var DB = { collection: function(c){ return query(c, {}); }, doc: docRef };
+
+  var USER = {
+    id: async function(){ await start(); return session.user.id; },
+    isOwner: async function(){ await start(); return isAdmin(); },
+    profiles: async function(ids){ return {}; }
+  };
+
+  /* ---- 파일 저장: 브라우저 기본 다운로드 ---- */
+  var DOWN = {
+    save: async function(o){
+      var b = o.data instanceof Blob ? o.data : new Blob([o.data], { type: /\.html?$/i.test(o.filename) ? "text/html;charset=utf-8" : /\.csv$/i.test(o.filename) ? "text/csv;charset=utf-8" : "application/octet-stream" });
+      var u = URL.createObjectURL(b), a = document.createElement("a");
+      a.href = u; a.download = o.filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(u); }, 60000);
+    }
+  };
+
+  window.claude = {
+    use: async function(n){
+      if (n === "downloads") return DOWN;
+      if (n === "sample") return null;          // AI 검토는 Claude 버전에서
+      if (n === "db"){ try { await start(); return DB; } catch(e){ return null; } }
+      if (n === "user"){ try { await start(); return USER; } catch(e){ return null; } }
+      return null;
+    }
+  };
+  /* Supabase 무료 플랜 7일 유휴 정지 방지: 접속할 때마다 가벼운 조회 1회 (SELECT id FROM jb_fx_reviews LIMIT 1) */
+  function keepAlive(){
+    try { fetch(CFG.url + "/rest/v1/jb_fx_reviews?select=id&limit=1", { headers:{ apikey: CFG.key, Authorization: "Bearer " + CFG.key }, cache:"no-store", keepalive:true }).catch(function(){}); } catch(e){}
+  }
+  document.addEventListener("DOMContentLoaded", function(){ keepAlive(); start().catch(function(){}); });
+})();
+
+</script>
 <style>
 /*
 Copyright (c) 2021 Kil Hyung-jin, with Reserved Font Name Pretendard.
@@ -2017,11 +2192,69 @@ table.dt .pill{white-space:nowrap}
   :root[data-theme="light"] .side .tabs button.on::before{display:none}
   :root[data-theme="light"] .side .tabs button.on{background:transparent;color:#003087;box-shadow:inset 0 -2px 0 #003087;border-radius:0}
 }
+
+/* ===== 15차 ===== */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1240px;margin:0 auto;padding:14px 20px 0}
+.tb-brand{display:flex;align-items:center;gap:10px;min-width:0}.jb-mark{width:34px;height:34px;flex:none}
+.tb-word{display:flex;align-items:baseline;gap:8px;white-space:nowrap}.tb-word b{font-size:16px;color:#003087;letter-spacing:-.01em}.tb-word span{font-size:13px;color:var(--sub);padding-left:8px;border-left:1px solid var(--line)}
+.tb-app{font-size:12px;color:var(--sub);margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-claude{display:flex;align-items:center;gap:6px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 14px;font-size:13px;white-space:nowrap}
+.tb-claude:hover{border-color:#003087;color:#003087}.tb-claude.on{border-color:#047857;color:#047857;background:var(--ok-soft)}
+:root[data-theme="dark"] .tb-word b{color:#8fd0ff}
+.cl-steps{margin:10px 0 14px;padding-left:20px;line-height:1.8}
+.tier{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:4px 0 10px}
+.tier-s{border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--sub);background:var(--surface);min-width:0}
+.tier-s b{display:block;font-size:13px}.tier-s span{display:block;font-size:11px;line-height:1.4;margin-top:2px}
+.tier-s.on{border:2px solid #003087;background:#EEF2FA;color:#003087}
+:root[data-theme="dark"] .tier-s{background:#1a4580;border-color:#2c64a8;color:#b9d3f0}:root[data-theme="dark"] .tier-s.on{background:#235a9e;border-color:#4fb3f5;color:#fff}
+.tier-basis{margin:0 0 10px;font-size:12.5px;color:var(--sub)}.tier-basis b{color:var(--ink);margin-right:6px}
+.amber-box{border:1px solid #F59E0B;background:#FFFBEB;color:#92400E;border-radius:10px;padding:10px 14px;margin:0 0 12px}
+.amber-box b{display:block;font-size:13.5px}.amber-box ul{margin:4px 0;padding-left:18px;font-size:12.5px}.amber-box span{font-size:12px}
+:root[data-theme="dark"] .amber-box{background:#3a3218;border-color:#f6c75c;color:#f6c75c}
+.pill.amber{background:#FEF3C7;color:#92400E;margin-left:4px}
+table.dt td small{display:block}
+.mk.must,.qc-it.must .mk{background:#FEF3C7!important;color:#92400E!important}.qc-it.must{border-color:#F59E0B}.chk:has(.mk.must){background:#FFFBEB;border-radius:8px}:root[data-theme="dark"] .chk:has(.mk.must){background:#3a3218}
+.pii-guide{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--warn-soft);font-size:12.5px}.pii-guide span{display:block;margin-top:2px;color:var(--sub)}
+.hq-att{cursor:pointer}
+.g-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.g-form{display:flex;flex-direction:column;gap:10px}.g-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.g-form textarea{resize:vertical;font-size:13px;line-height:1.55}
+.g-prev{background:#F1F5F9;border-radius:10px;padding:12px;max-height:72vh;overflow:auto}
+.g-paper{background:#fff;color:#0F172A;padding:22px 24px;border:1px solid #E2E8F0;font-size:12px;line-height:1.6}
+.g-paper .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #003087;padding-bottom:6px;margin-bottom:10px}
+.g-paper h1{font-size:17px;margin:0}.g-paper .org{font-size:11px;color:#003087;font-weight:700}.g-paper small{color:#64748B;font-size:10.5px}
+.g-paper h2{font-size:12.5px;color:#003087;margin:12px 0 5px;padding-bottom:3px;border-bottom:1px solid #E2E8F0}
+.g-paper table.kv{width:100%;border-collapse:collapse}.g-paper table.kv td{border:1px solid #E2E8F0;padding:4px 7px}.g-paper td.k{background:#F8FAFC;width:80px;font-weight:600}
+.g-paper ul.ck{list-style:none;margin:0;padding:0}.g-paper ul.ck li{padding:3px 0 3px 20px;position:relative;border-bottom:1px dashed #E2E8F0}.g-paper ul.ck li:before{content:"";position:absolute;left:2px;top:7px;width:11px;height:11px;border:1.5px solid #475569;border-radius:2px}
+.g-paper ul.dot{margin:0;padding-left:16px}.g-paper .ft{margin-top:12px;font-size:10px;color:#64748B;border-top:1px solid #E2E8F0;padding-top:5px}.g-paper .muted{color:#64748B}
+@media (max-width:520px){.tb-word span{display:none}.tb-claude{padding:6px 11px}}
+@media (max-width:860px){.topbar{padding:10px 12px 0}.tb-app{display:none}.tb-claude b{font-size:12px}.tier{grid-template-columns:repeat(2,minmax(0,1fr))}.g-grid,.g-row,.g-row3{grid-template-columns:1fr}}
+
+/* ===== 웹 버전 ===== */
+.wl{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#F8FAFC;padding:20px}
+.wl.hidden{display:none}
+.wl-card{width:100%;max-width:380px;background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:28px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 30px rgba(15,23,42,.06)}
+.wl-brand{display:flex;gap:12px;align-items:center;margin-bottom:6px}.wl-brand svg{width:40px;height:40px}
+.wl-brand b{display:block;font-size:18px;color:#0F172A}.wl-brand span{font-size:12.5px;color:#64748B}
+.wl-card .btn{width:100%;margin:4px 0 0;padding:11px}
+.wl-st{min-height:1em;margin:0;font-size:12.5px;color:#B91C1C}.wl-note{margin:0;font-size:11.5px;color:#64748B}
+.web-acct{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0 0 10px;font-size:11.5px}
+.web-acct button{background:none;border:1px solid var(--line);border-radius:7px;padding:3px 8px;font-size:11.5px;color:var(--sub)}
+.web-acct button:hover{color:var(--accent);border-color:var(--accent)}
+.banner a.btn{display:inline-block;margin:8px 0 0;text-decoration:none;color:#fff}
 </style>
 <style id="sheetCss"></style>
 </head>
 <body>
-<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main">
+<div id="webLogin" class="wl hidden" role="dialog" aria-modal="true" aria-labelledby="wlT"><form id="wlForm" class="wl-card" autocomplete="on">
+<div class="wl-brand"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#003087"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b id="wlT">JB 환이</b><span>외환사업부 팀 공용 로그인</span></div></div>
+<label class="fl"><span>이메일</span><input class="field" name="email" type="email" required autocomplete="username"></label>
+<label class="fl"><span>비밀번호</span><input class="field" name="password" type="password" required autocomplete="current-password"></label>
+<button class="btn" id="wlBtn" type="submit">로그인</button><p class="wl-st" id="wlSt" role="status"></p>
+<p class="wl-note">팀 내부 전용입니다. 계정은 외환사업부 관리자에게 받으세요.</p></form></div>
+<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span>팀 공용 계정</span><button type="button" onclick="fxWebLogout()">로그아웃</button></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
+<dialog id="claudeDlg" style="max-width:520px"><div class="d-hd"><b>Claude AI 연결</b><button class="btn ghost sm" id="claudeX" type="button">닫기</button></div><div class="d-bd" id="claudeB"></div></dialog>
+
 
 <div class="wrap single" id="tab-home">
   <div class="ticker" aria-label="오늘의 고시환율">
@@ -2035,7 +2268,7 @@ table.dt .pill{white-space:nowrap}
       <label class="sr" for="hqQ">거래 상황</label>
       <textarea id="hqQ" class="field" rows="5" placeholder="거래 상황을 적어 주세요. 예) 국내 거주 개인이 미국 유학 중인 자녀에게 학비 3만불을 송금"></textarea>
       <div class="qtags" aria-label="자주 쓰는 거래"><button type="button" class="qtag" data-qt="거주자 개인이 지급증빙서류 없이 해외로 미화 3만불을 송금하려고 합니다. 올해 같은 방식으로 보낸 금액은 없습니다.">지급증빙 미제출 송금</button><button type="button" class="qtag" data-qt="해외 주재원(해외체재자)에게 체재비 미화 2만불을 송금하려고 합니다.">해외체재자 경비</button><button type="button" class="qtag" data-qt="국내 거주 부모가 미국 유학 중인 자녀에게 학비와 생활비 미화 4만불을 송금하려고 합니다.">해외유학생 경비</button><button type="button" class="qtag" data-qt="거주자 법인이 해외에 현지법인을 새로 세우려고 미화 10만불을 송금해 지분 100%를 취득하려고 합니다.">해외직접투자</button><button type="button" class="qtag" data-qt="외국 법인이 기존 외국인투자기업에 증자 목적으로 미화 500만불을 송금하려고 합니다.">외국인투자(FDI) 증자</button><button type="button" class="qtag" data-qt="거주자 개인이 해외 주거용 부동산을 사려고 계약금 미화 5만불을 먼저 송금하려고 합니다.">해외부동산 취득</button><button type="button" class="qtag" data-qt="비거주자인 재외동포가 국내 예금 2억원을 본인 해외계좌로 송금하려고 합니다.">재외동포 재산반출</button><button type="button" class="qtag" data-qt="외국인 근로자가 국내 급여로 모은 1,500만원을 본국으로 송금하려고 합니다.">비거주자 국내소득 송금</button></div>
-      <div class="qa-foot"><span class="hint">고객 실명·주민등록번호·계좌번호는 적지 마세요. 번호 형식은 자동으로 가립니다.</span><span class="qa-act"><button type="button" class="btn ghost" data-nav="ask">상세 입력</button><button type="button" class="btn" id="hqGo">검토 시작</button></span></div>
+      <div class="qa-foot"><span class="hint">고객 실명·주민등록번호·계좌번호는 적지 마세요. 번호 형식은 자동으로 가립니다.</span><span class="qa-act"><label class="btn ghost hq-att">증빙서류 첨부<input type="file" id="hqFile" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple hidden></label><button type="button" class="btn ghost" data-nav="ask">상세 입력</button><button type="button" class="btn" id="hqGo">Claude에서 검토</button></span></div>
       <div class="status" id="hqSt" role="status"></div>
     </section>
     <div class="cock-side">
@@ -2068,7 +2301,7 @@ table.dt .pill{white-space:nowrap}
 <div class="wrap hidden" id="tab-ask">
   <div class="col">
     <div class="banner upd hidden" id="updBanner"></div>
-    <div class="banner warn hidden" id="unavail"><b>AI 거래 검토는 Claude에 로그인해야 쓸 수 있습니다.</b> 한도 계산, 서식함, 원문 검색, 기준 법령, 검토 내역은 로그인하지 않아도 쓸 수 있습니다.</div>
+    <div class="banner warn hidden" id="unavail"><b>AI 거래 검토는 Claude 버전에서 합니다.</b> 이 사이트에서는 한도 계산, 서식함, 원문 검색, 기준 법령, 팀 검토 내역, 서류 가림, 결과서 인쇄를 쓸 수 있습니다. 적은 질의는 복사해 두었다가 Claude 화면에 붙여 넣으면 됩니다.<br><a class="btn sm" href="https://claude.ai/artifact/DDnczYEeDHT7s2JAFxYb3J" target="_blank" rel="noopener">Claude에서 AI 검토 열기</a></div>
     <section class="panel" aria-label="질의 작성">
       <div class="step">
         <div class="step-h"><span class="step-n">1</span><span class="step-t">거래유형</span><span class="hint">큰 분류를 고르면 세부 유형이 나옵니다. 모르면 '자동 판단'으로 두세요</span></div>
@@ -2188,7 +2421,7 @@ table.dt .pill{white-space:nowrap}
 
 <dialog id="dlg"><div class="d-hd"><b id="dlgT"></b><button class="btn ghost sm" id="dlgX">닫기</button></div><div class="d-bd"><div id="dlgB" class="lawtxt"></div></div></dialog>
 
-<dialog id="redDlg" class="wide"><div class="d-hd"><b id="redT">개인정보 가리기</b><div class="row"><span class="hint" id="redCount"></span><button class="btn ghost sm" id="redReset" type="button">자동 가림으로 되돌리기</button><button class="btn sm" id="redOk" type="button">가림 완료</button><button class="btn ghost sm" id="redX" type="button">나중에</button></div></div>
+<dialog id="redDlg" class="wide"><div class="d-hd"><b id="redT">개인정보 가리기</b><div class="row"><span class="hint" id="redCount"></span><button class="btn ghost sm" id="redUndo" type="button">↶ 실행취소</button><button class="btn ghost sm" id="redReset" type="button">자동 가림으로 되돌리기</button><button class="btn ghost sm" id="redPrint" type="button">가린 사본 인쇄·PDF</button><button class="btn ghost sm" id="redSave" type="button">가린 사본 저장</button><button class="btn sm" id="redOk" type="button">가림 완료</button><button class="btn ghost sm" id="redX" type="button">나중에</button></div></div>
 <div class="banner crit" id="redNote" style="margin:10px 14px 0"></div><p class="hint" style="margin:6px 14px 0">빈 곳을 끌면 검게 가려지고, 검은 상자를 누르면 지워집니다. 가림을 완료한 서류만 AI에 보냅니다.</p><div class="red-pages" id="redPages"></div></dialog>
 <dialog id="attDlg" class="wide"><div class="d-hd"><b id="attT">첨부 서류</b><button class="btn ghost sm" id="attX" type="button">닫기</button></div><div class="row" id="attTabs" style="padding:10px 14px 0"></div><div class="d-bd" id="attB"></div></dialog>
 <div class="toast hidden" id="toast" role="status"></div>
@@ -2197,9 +2430,18 @@ table.dt .pill{white-space:nowrap}
 
 <dialog id="resDlg" style="max-width:640px"><div class="d-hd"><b>거주성 판단 도우미</b><button class="btn ghost sm" id="resX" type="button">닫기</button></div><div class="d-bd"><div class="wiz" id="wiz"></div></div></dialog>
 
+<dialog id="guideDlg" class="wide"><div class="d-hd"><b>고객 필요 서류 안내장</b><div class="row"><button class="btn sm" id="gPrint" type="button">PDF 인쇄</button><button class="btn ghost sm" id="gDocx" type="button">워드(.docx) 다운로드</button><button class="btn ghost sm" id="gHwp" type="button">한글(.hwpx) 다운로드</button><button class="btn ghost sm" id="gX" type="button">닫기</button></div></div>
+<div class="d-bd g-grid"><div class="g-form">
+<div class="g-row"><label class="fl"><span>고객명 <em>이 기기에서만 사용, 저장·전송 안 함</em></span><input class="field" id="gCust" autocomplete="off" placeholder="예: 홍길동"></label><label class="fl"><span>거래 목적</span><input class="field" id="gPurpose" placeholder="예: 해외 유학생 학비 송금"></label></div>
+<label class="fl"><span>필요 서류 <em>한 줄에 하나, 체크박스로 출력</em></span><textarea class="field" id="gDocs" rows="7"></textarea></label>
+<label class="fl"><span>창구에서 작성할 서식 <em>서식함 번호</em></span><textarea class="field" id="gForms" rows="3"></textarea></label>
+<label class="fl"><span>준비 시 유의사항 <em>한 줄에 하나</em></span><textarea class="field" id="gNotes" rows="4"></textarea></label>
+<div class="g-row3"><label class="fl"><span>지점</span><input class="field" id="gBranch" placeholder="예: 전주지점"></label><label class="fl"><span>담당자</span><input class="field" id="gStaff" placeholder="예: 김대리"></label><label class="fl"><span>연락처</span><input class="field" id="gPhone" placeholder="예: 063-000-0000"></label></div>
+<p class="hint" id="gSt" role="status"></p></div>
+<div class="g-prev"><div class="g-paper" id="gPrev"></div></div></div></dialog>
 <dialog id="sheetDlg">
   <div class="d-hd"><b>고객 안내문</b>
-    <div class="row"><button class="btn sm" id="sheetSave">파일로 저장</button><button class="btn ghost sm" id="sheetCopy">내용 복사</button><button class="btn ghost sm" id="sheetX">닫기</button></div>
+    <div class="row"><button class="btn sm" id="sheetPrint">인쇄</button><button class="btn ghost sm" id="sheetSave">파일로 저장</button><button class="btn ghost sm" id="sheetCopy">내용 복사</button><button class="btn ghost sm" id="sheetX">닫기</button></div>
   </div>
   <div class="meta-row">
     <input class="field" id="mBranch" placeholder="영업점 (예: 전주지점)">
@@ -2353,10 +2595,10 @@ function vTone(k, val){
   if (k === "통보") return /대상|통보/.test(val) ? "t-warn hot" : "t-unk";
   return "t-info";
 }
-function verdictHTML(v){
-  const st = v["신고여부"] || "확인 필요", top = vTone("신고여부", st);
+function verdictHTML(v, text){
+  const st = v["신고여부"] || "확인 필요", top = vTone("신고여부", st), G = guardOf(v, text);
   const card = (k, label, extra) => { const val = k === "신고여부" ? st : v[k]; if (!val) return ""; return `<div class="vc ${k === "신고여부" ? top + " hot" : vTone(k, val)}"><span>${label}</span><b>${esc(val)}</b>${extra ? `<small>${esc(extra)}</small>` : ""}</div>`; };
-  return `<div class="vres"><div class="sec-h">${VI.ok}판정 결과</div><div class="vcards">${card("신고여부", "신고 여부", v["신고유형"])}${card("신고기관", "신고기관")}${card("신고시기", "신고 시기")}${card("지정거래외국환은행", "거래외국환은행 지정")}</div>${v["요지"] ? `<p class="vgist">${esc(v["요지"])}</p>` : ""}</div>`;
+  return `<div class="vres"><div class="sec-h">${VI.ok}판정 결과</div>${tierHTML(G)}<div class="vcards">${card("신고여부", "신고 여부", v["신고유형"])}${card("신고기관", "신고기관")}${card("신고시기", "신고 시기")}${card("지정거래외국환은행", "거래외국환은행 지정")}</div>${v["요지"] ? `<p class="vgist">${esc(v["요지"])}</p>` : ""}</div>`;
 }
 const SRC_KIND = id => /^법 /.test(id) ? "법률" : /^시행령/.test(id) ? "시행령" : /^규정/.test(id) ? "규정" : /^지침/.test(id) ? "취급지침" : /^외투법/.test(id) ? "외투법령" : /^해외진출세칙/.test(id) ? "시행세칙" : /^해외진출/.test(id) ? "해외진출규정" : /^참고/.test(id) ? "참고자료" : "기타";
 function basisTable(lines){
@@ -2552,7 +2794,7 @@ async function getForm(no, btn){
     const r = await fetch(f.file); if (!r.ok) throw 0;
     const name = `${f.grp ? (f.grp === "규정" ? "외국환거래규정_" : "외투법시행규칙_") + f.label.replace(/[\s()]+/g, "") : "지침서식_제" + no + "호"}_${f.title.replace(/[\\/:*?"<>|()]/g,"").replace(/\s+/g,"_").slice(0, 60)}.${f.fmt === "hwp" ? "hwp" : "pdf"}`;
     let blob = await formBlob(f, r), fname = name;
-    if (f.fmt === "hwp"){ const Z = await loadZip(); const z = new Z(); z.file(name, blob); blob = await z.generateAsync({ type:"blob" }); fname = name.replace(/\.hwp$/, ".zip"); }
+    if (f.fmt === "hwp" && !window.__WEB){ const Z = await loadZip(); const z = new Z(); z.file(name, blob); blob = await z.generateAsync({ type:"blob" }); fname = name.replace(/\.hwp$/, ".zip"); }
     await saveFile(fname, blob, t => say(`${f.grp ? FGRP[f.grp] + " " + f.label : "서식 제" + no + "호"}: ${t}`));
   } catch { say("서식 파일을 불러오지 못했습니다."); toast("서식 파일을 불러오지 못했습니다. 잠시 후 다시 눌러 주세요."); }
   finally { if (btn) btn.disabled = false; }
@@ -2623,6 +2865,9 @@ const RULES = `당신은 전북은행 외환사업부의 외환 유권해석 보
 신고기관: (지정거래외국환은행의 장 / 외국환은행의 장 / 한국은행총재 / 재정경제부장관 / 금융위원회·금융감독원 / 산업통상부 위탁기관(KOTRA·외국환은행) / 세관장 / 해당 없음 중에서, 경유기관이 있으면 함께)
 신고시기: (거래 전 사전신고 / 거래 후 N일 이내 사후보고 / 해당 없음 등)
 지정거래외국환은행: (지정 필요 | 지정 불요 | 확인 필요)
+신고구분: (① 신고 불요 | ② 지정은행 확인 | ③ 한국은행 신고 | ④ 재정경제부 신고 | 확인 필요 중 하나)
+근거조문: (판정의 근거 조문을 조·항·호까지. 예: 규정 제4-3조제1항제1호; 지침 제3장제2절 2)
+본점확인: (불요 | 필요 — 사유 한 줄)
 요지: (고객에게 말하듯 한 문장)
 <</판정>>
 ## 결론
@@ -2638,7 +2883,13 @@ const RULES = `당신은 전북은행 외환사업부의 외환 유권해석 보
 (결론을 바꿀 수 있는 사실관계. 없으면 생략)
 한국어로, 은행 실무자가 바로 쓸 수 있게 간결하게 쓰세요.
 사실관계에 적힌 미화 환산액은 서울외국환중개 고시 매매기준율(재정된 매매기준율)로 계산한 값이니 한도 판단에 그대로 쓰세요.
-질의하는 사람은 전북은행 외환사업부 직원(외환 업무 심사·지원 담당)입니다. "외환사업부에 문의하세요", "본부에 확인하세요" 같은 안내는 쓰지 마세요. 판단이 어렵거나 원문만으로 결론이 나지 않으면 "재정경제부 외환제도과(또는 한국은행 외환심사팀)에 유권해석 질의 필요"처럼 상급기관 질의가 필요한 쟁점을 구체적으로 쓰고, 영업점에서 추가로 받아야 할 자료를 적으세요.
+질의하는 사람은 전북은행 영업점 외환 창구 직원 또는 외환사업부 직원입니다. 판단이 어렵거나 원문만으로 결론이 나지 않으면 '## 추가 확인 필요'에 "외환사업부(본점) 심층 확인 필요"와 그 쟁점을 구체적으로 쓰고, 상급기관 유권해석이 필요한 쟁점(재정경제부 외환제도과, 한국은행 외환심사팀)과 영업점에서 추가로 받아야 할 자료를 적으세요.
+
+[판정 가드레일 — 반드시 지킬 것]
+1. 신고구분은 4단계 중 하나입니다. ① 신고 불요(신고·확인 없이 처리), ② 지정은행 확인(외국환은행·지정거래외국환은행에 하는 신고 또는 확인, 증빙서류 확인 포함), ③ 한국은행 신고(한국은행총재 신고·신고수리), ④ 재정경제부 신고(재정경제부장관 신고·신고수리·허가, 옛 기획재정부). 이 넷에 맞지 않거나 결론이 갈리면 '확인 필요'로 쓰세요.
+2. 근거조문에는 제공된 원문에서 직접 확인한 조문을 조·항·호까지 적으세요. 원문에서 근거 조문을 찾지 못했으면 조문 번호를 추측하지 말고 신고여부와 신고구분을 '확인 필요', 본점확인을 '필요'로 하세요. 조문 번호 없는 판정은 쓰지 마세요.
+3. 사실관계(거주성, 금액, 거래 성격, 기존 신고 여부)가 모호하거나 해석이 갈리면 보수적으로 판정하고 본점확인을 '필요'로 하세요.
+4. '## 제출서류'에는 창구에서 고객에게 받을 서류를 빠짐없이 한 줄씩, '## 필요 서식'에는 서식 번호로 적으세요.
 첨부 서류가 있으면 서류를 직접 읽고 결론 바로 다음에 '## 서류 검토' 섹션을 넣으세요.
 [참고자료] 원문 검색에는 KOTRA 「2026 외국인투자가이드」(KOTRA자료 26-077) 발췌가 함께 들어 있습니다. 외국인투자(FDI) 신고, 투자자금 송금·외국환매입증명서, 장기차관, 외국인투자기업 등록·말소, 청산 후 잔여재산 송금 같은 실무 절차와 준비서류를 확인할 때 search_texts로 찾아 활용하세요. 다만 판단의 근거는 법·시행령·규정·지침 조문을 우선 인용하고, 참고자료는 [참고 외투가이드 p.N] 형식으로 보조 인용만 하세요. 가이드에 적힌 조문 번호가 현행 원문과 다르면 현행 원문을 따르세요(예: 외국인투자기업 설립비용 반환 지급은 현행 규정 제4-3조제1항제8호).
 '지급신청서'라는 말은 쓰지 말고 '송금신청서'(서식 제3-1호)라고 쓰세요. 고객명·지점명은 받지 않으니 답변에 '고객'으로만 쓰세요.
@@ -2646,6 +2897,12 @@ const RULES = `당신은 전북은행 외환사업부의 외환 유권해석 보
 
 [위반·사후처리 질의]
 거래유형이 '위반·사후처리'이거나 신고·보고 누락이 드러나면, 먼저 위반 유형(사전 신고 누락, 사후 보고 누락·지연, 지급 절차 위반, 휴대 수출입 미신고 등)을 특정하세요. 처리 절차에는 규정 제4-2조제3항에 따라 외국환은행을 경유해 제재기관(금융감독원 포함)에 위반사실을 보고하고, 빠진 신고·보고를 사후에 완료한 뒤 지급하는 순서(수령은 보고 후 가능)를 쓰세요. 제재 가능성은 법 제19조(경고·거래정지), 법 제32조(과태료), 법 제29조(형사처벌) 원문과 시행령의 금액 기준을 확인해 위반 금액·횟수에 따라 나누어 쓰되 단정하지 마세요. 필요 서식에 [서식 제4-4호]를 넣고, 판정 블록의 신고여부는 '사후보고' 또는 '확인 필요' 중 맞는 것을 쓰세요.
+
+[창구 핵심 기준 — 내장 원문으로 확인됨]
+- 증빙서류 미제출 지급 [규정 제4-3조] 제1항제1호·제2호, [지침 p.38]·[지침 p.39]: 연간 누계 미화 10만불은 외국환업무취급기관등을 통해 지급한 금액을 모두 합산한 금액이며, 한국은행 해외송금 통합관리시스템(ORIS)으로 한도를 관리합니다. 이 지급은 거래외국환은행 지정 대상이 아닙니다([규정 제10-11조] 각호에 없음). 연간 10만불을 넘은 뒤에는 건당 미화 5천불 이하만 증빙 없이 지급할 수 있고 외국환은행에서만 취급합니다. 창구에서는 반드시 ORIS로 전 금융기관 합산 누계를 조회한 뒤 지급한다고 쓰세요.
+- 해외이주비 [규정 제4-3조] 제1항제9호·제3항, [규정 제10-11조] 제1항제2호: 관할세무서장이 발급한 자금출처확인서 범위 이내에서 지급하고, 1개의 거래외국환은행을 지정합니다(개별이주를 제외하고 세대원은 지정등록 대상 아님, [지침 p.36] 21). 은행은 자금출처확인서 한도 소진 시까지 지급할 수 있습니다([지침 p.36] 24). 옛 규정 제4-6조는 2025.2.10 삭제되었습니다. '세대별 합계 미화 10만불 초과 시 자금출처확인서 징구'는 2025.2.10 이전에 해외이주자(예정자 포함)로 지정된 자에게만 적용됩니다([지침 p.42] 8). 해외이주비 지급은 재외동포 국내재산반출과 중복 적용할 수 없습니다([지침 p.42] 10).
+- 비거주자인 재외동포의 국내재산 반출 [규정 제4-4조] 제1항제8호, [규정 제10-11조] 제1항제3호: 관할세무서장이 발급한 부동산매각자금확인서(부동산 처분대금. 부동산소재지 또는 신청자 최종주소지 관할) 또는 예금등 자금출처확인서(예금·신탁 등. 지정거래외국환은행 소재지 또는 신청자 최종주소지 관할)의 범위 이내에서 지정거래외국환은행을 통해 지급합니다([지침 p.46]·[지침 p.47]). 옛 규정 제4-7조는 2025.2.10 삭제되었습니다.
+- 내장 원문에는 자금출처확인서 '유효기간 1년'이나 재외동포 재산반출의 '미화 10만불 이하 자금출처확인서 면제' 기준이 없습니다. 이 기준을 판정 근거로 쓰지 마세요.
 
 [최신 개정사항 — 지침(2026.1.28) 이후]
 ${AMEND.join("\n")}`;
@@ -2719,7 +2976,7 @@ async function start(){
   if (busy){ setStatus("검토가 진행 중입니다. 끝난 뒤 다시 눌러 주세요."); return; }
   if (!raw){ setStatus("3번 질의 내용에 거래 상황을 먼저 적어 주세요."); $("#qbox").focus(); return; }
   if (blocked){ setStatus("이 계정에서는 AI 검토를 쓸 수 없습니다."); return; }
-  if (!sample){ setStatus(sampleReady ? "AI 거래 검토는 Claude에 로그인해야 쓸 수 있습니다. 로그인한 뒤 이 화면을 다시 열어 주세요." : "Claude 연결을 준비하고 있습니다. 잠시 뒤 다시 눌러 주세요."); return; }
+  if (!sample){ if (sampleReady) return toClaude(raw, setStatus); setStatus(sampleReady ? "" : "Claude 연결을 준비하고 있습니다. 잠시 뒤 다시 눌러 주세요."); return; }
   if (!attReady("ask")) return;
   const ctx = formSnapshot(); const pm = maskPII(stripName(raw, ctx.custName)), q = pm.text, facts0 = baseFacts();
   const masked = pm.hits.length ? `${pm.hits.join(", ")}로 보이는 내용을 가리고 보냈습니다. ` : "";
@@ -2807,6 +3064,7 @@ const PRE_PROMPT = (type, q, facts, ctx) => `당신은 은행 외환 실무 보�
 신고기관: 
 신고시기: 
 지정거래외국환은행: (지정 필요 | 지정 불요 | 확인 필요)
+신고구분: (① 신고 불요 | ② 지정은행 확인 | ③ 한국은행 신고 | ④ 재정경제부 신고 | 확인 필요 중 하나)
 요지: (고객에게 말하듯 한 문장)
 <</판정>>
 
@@ -2877,12 +3135,15 @@ async function ask(t, q, facts, o = {}){
     renderEvidence(eEl, last, ids, q, precs, att.items);
     if (done){
       const p = splitVerdict(last), v = p.v || {}, st = v["신고여부"] || "확인 필요", cf = confidence(last, p.v);
+      if (p.v) vEl.innerHTML = verdictHTML(p.v, last);
       const confHTML = `<span class="conf ${cf.cls}" title="답변에 인용된 원문 조문 수와 '원문 미확인' 표시 문장 수로 매긴 참고 지표입니다">근거 신뢰도 ${cf.label} · 원문 인용 ${cf.cited}건 · 원문 미확인 ${cf.gen}문장</span>`;
       extra = confHTML + `<span class="saved">내역 저장 중…</span>`; tools();
       const unk = /확인 필요/.test(st);
       xEl.classList.remove("hidden");
-      xEl.innerHTML = `<button class="btn sm" data-sheet>고객 안내문 만들기</button><button class="btn ghost sm" data-chk>창구 체크리스트 저장</button><button class="btn ghost sm" data-copy>검토 결과 복사</button>${deep ? "" : `<button class="btn ${unk ? "" : "ghost "}sm" data-deep>심층 검토로 다시 보기${unk ? " (권장)" : ""}</button>`}`;
+      xEl.innerHTML = `<button class="btn sm" data-guide>필요 서류 안내장</button><button class="btn ghost sm" data-print>검토 결과서</button><button class="btn ghost sm" data-sheet>고객 안내문 만들기</button><button class="btn ghost sm" data-chk>창구 체크리스트 저장</button><button class="btn ghost sm" data-copy>검토 결과 복사</button>${deep ? "" : `<button class="btn ${unk ? "" : "ghost "}sm" data-deep>심층 검토로 다시 보기${unk ? " (권장)" : ""}</button>`}`;
       xEl.querySelector("[data-sheet]").onclick = ev => makeSheet(type, q, facts, last, ev.currentTarget);
+      xEl.querySelector("[data-guide]").onclick = () => openGuide({ type, q, facts, answer:last, custName:(o.ctx || {}).custName || "", branch:(o.ctx || {}).branch || "", staff:(o.ctx || {}).staff || "" });
+      xEl.querySelector("[data-print]").onclick = () => printCase({ type, q, facts, answer:last, createdAt:new Date().toISOString(), branch:(o.ctx || {}).branch || "", staff:(o.ctx || {}).staff || "", custName:(o.ctx || {}).custName || "" }, setStatus);
       xEl.querySelector("[data-chk]").onclick = () => saveChecklist(type, q, facts, last, setStatus);
       xEl.querySelector("[data-copy]").onclick = ev => copyResult(type, q, facts, last, ev.currentTarget);
       const dz = xEl.querySelector("[data-deep]"); if (dz) dz.onclick = () => ask(t, q, facts, { deep:true, auto:o.auto, ctx:o.ctx, replace:box, prevV:st });
@@ -2958,6 +3219,10 @@ async function makeSheet(type, q, facts, answer, btn){
   finally { btn.disabled = false; btn.textContent = label; }
 }
 $("#sheetX").onclick = () => $("#sheetDlg").close();
+$("#sheetPrint").onclick = () => {
+  const node = $("#sheetHost").firstElementChild.cloneNode(true); node.querySelectorAll("[contenteditable]").forEach(e => e.removeAttribute("contenteditable"));
+  printHTML(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>고객 안내문</title><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600&family=Noto+Serif+KR:wght@700&display=swap" rel="stylesheet"><style>body{margin:0;background:#fff}${SHEET_CSS}</style></head><body>${node.outerHTML}</body></html>`);
+};
 $("#sheetSave").onclick = async () => {
   const node = $("#sheetHost").firstElementChild.cloneNode(true); node.querySelectorAll("[contenteditable]").forEach(e => e.removeAttribute("contenteditable"));
   const title = (node.querySelector("h1") || {}).textContent || "외환 거래 안내";
@@ -3218,9 +3483,9 @@ function openCase(id){
   $("#caseT").textContent = `${c.type || ""} · ${fmtDate(c.createdAt)}`;
   const B = $("#caseB");
   B.innerHTML = `<div class="r-head"><span class="tag">${esc(c.type || "")}${c.auto ? " · 자동 판단" : ""}${c.rev ? " · 재검토" : ""}</span><div class="r-q">${esc(c.q || "")}</div>${c.facts ? `<div class="r-facts">${esc(c.facts)}</div>` : ""}${c.branch || c.staff || custOf(c) ? `<div class="hint">${esc([c.branch, c.staff ? "담당 " + c.staff : "", custOf(c) ? "고객 " + custOf(c) : ""].filter(Boolean).join(" · "))}</div>` : ""}${(c.attachments || []).length ? `<div class="hint">첨부 서류: ${c.attachments.map(esc).join(", ")} (파일은 저장되지 않아 검토한 화면에서만 볼 수 있습니다)</div>` : ""}<div class="hint">검토자 <span ${c.author ? `data-uid="${esc(c.author)}"` : ""}>${c.local ? "이 브라우저" : "…"}</span> · ${esc(fmtDate(c.createdAt))}${c.deep ? " · 심층 검토" : ""}${c.conf ? ` · 근거 신뢰도 ${esc(c.conf.level)}` : ""}</div></div>
-    ${reviewHTML(r)}${Object.keys(v).length ? verdictHTML(v) : ""}
+    ${reviewHTML(r)}${Object.keys(v).length ? verdictHTML(v, c.snap ? null : (c.answer || "")) : ""}
     <div class="r-body">${c.snap ? '<p class="hint">로그인하지 않은 화면에서는 판정 요약만 보입니다. 검토 본문 전체(근거·처리 절차·제출서류)는 Claude에 로그인하면 볼 수 있습니다.</p>' : resultMD(body)}</div>${c.review2 && c.review2.text ? `<div class="r2"><div class="r2-h">${VI.search}<b>2차 검토</b><span class="hint">검증 에이전트</span></div><div class="r2-b">${review2Body(c.review2.text)}</div></div>` : ""}<div class="ev hidden" data-e></div><div class="revbox" data-rev></div>
-    <div class="r-actions"><button class="btn sm" data-again type="button">이 질의로 다시 검토</button><button class="btn ghost sm" data-sheet type="button">고객 안내문</button><button class="btn ghost sm" data-chk type="button">창구 체크리스트 저장</button><button class="btn ghost sm" data-copy type="button">복사</button>${canDel ? `<button class="btn ghost sm" data-del type="button">삭제</button>` : ""}<span class="status" data-st></span></div>`;
+    <div class="r-actions"><button class="btn sm" data-again type="button">이 질의로 다시 검토</button><button class="btn ghost sm" data-sheet type="button">고객 안내문</button><button class="btn sm" data-guide type="button">필요 서류 안내장</button><button class="btn ghost sm" data-print type="button">검토 결과서</button><button class="btn ghost sm" data-chk type="button">창구 체크리스트 저장</button><button class="btn ghost sm" data-copy type="button">복사</button>${canDel ? `<button class="btn ghost sm" data-del type="button">삭제</button>` : ""}<span class="status" data-st></span></div>`;
   renderEvidence(B.querySelector("[data-e]"), c.answer || "", c.refs || [], c.q || "");
   renderReviewForm(B.querySelector("[data-rev]"), c, r);
   { const t = TYPES.find(x => x.k === c.typeKey) || TYPES.find(x => x.k === "etc_q"); const mp = morePanel({ t, q:c.q || "", facts:c.facts || "", answer:c.answer || "", auto:c.auto, ctx:{ custName:custOf(c) || "", branch:c.branch || "", payer:c.payer || "", payee:c.payee || "", payeeCountry:c.payeeCountry || "", cur:c.cur || "", amt:c.amt || "", usd:c.usd || 0 }, fromCase:true }); if (mp) B.querySelector(".r-body").after(mp); }
@@ -3228,6 +3493,8 @@ function openCase(id){
   B.querySelector("[data-again]").onclick = () => { const t = TYPES.find(x => x.k === c.typeKey); if (t){ curType = t; renderTypes(); } $("#qbox").value = (c.q || "") + (c.facts ? "\n" + c.facts.replace(/^- /gm, "") : ""); $("#caseDlg").close(); showTab("ask"); $("#qbox").focus(); piiCheck(); };
   B.querySelector("[data-sheet]").onclick = ev => makeSheet(c.type, c.q, c.facts, c.answer, ev.currentTarget);
   B.querySelector("[data-chk]").onclick = () => saveChecklist(c.type, c.q, c.facts, c.answer, say);
+  B.querySelector("[data-print]").onclick = () => printCase(c, say);
+  B.querySelector("[data-guide]").onclick = () => openGuide({ type:c.type, q:c.q, facts:c.facts, answer:c.snap ? "" : (c.answer || ""), custName:custOf(c), branch:c.branch || "", staff:c.staff || "" });
   B.querySelector("[data-copy]").onclick = ev => copyResult(c.type, c.q, c.facts, c.answer, ev.currentTarget);
   const del = B.querySelector("[data-del]");
   if (del){ let armed = false; del.onclick = async () => {
@@ -3358,8 +3625,10 @@ $("#rateDate").addEventListener("change", renderRates); $("#rateQ").addEventList
 const LIM = (val, limit, label, inText, overText, refs) => val <= limit ? { cls:"ok", mark:"이내", label, val, text:inText, refs } : { cls:"over", mark:"초과", label, val, text:overText, refs };
 const HIT = (cond, val, label, onText, offText, refs) => cond ? { cls:"over", mark:"해당", label, val, text:onText, refs } : { cls:"ok", mark:"미해당", label, val, text:offText, refs };
 const INFO = (label, text, refs) => ({ cls:"info", mark:"안내", label, val:null, text, refs });
+const ORIS_INFO = () => ({ cls:"must", mark:"필수", label:"전 금융기관 합산 연간 누계 (USD 100,000) · ORIS 실시간 조회 필수", val:null, text:"거래외국환은행 사전 지정은 필요 없습니다. 연간 누계는 모든 금융기관에서 증빙 없이 보낸 금액의 합계라, 지급 전에 한국은행 해외송금 통합관리시스템(ORIS)으로 누계를 조회하세요.", refs:["규정 제4-3조", "지침 p.38", "지침 p.39"] });
 const SCEN = [
- { k:"res_pay", t:"out_gen", n:"거주자 지급 · 증빙서류 없이 해외송금", d:"신고가 필요 없는 경상 지급을 지급 증빙서류 없이 할 수 있는지 봅니다. 외국인거주자는 '비거주자·외국인거주자 지급'을 고르세요.", c: x => [
+ { k:"res_pay", t:"out_gen", n:"거주자 지급 · 증빙서류 없이 해외송금", d:"신고가 필요 없는 경상 지급을 지급 증빙서류 없이 할 수 있는지 봅니다. 거래외국환은행 지정은 필요 없고, 전 금융기관 합산 누계를 한국은행 ORIS로 조회합니다. 외국인거주자는 '비거주자·외국인거주자 지급'을 고르세요.", c: x => [
+   ORIS_INFO(),
    LIM(x.annual, 1e5, "연간 누계 미화 10만불 이내", "증빙서류 없이 지급할 수 있습니다. 거래 내용은 설명을 듣고 확인합니다.", "연간 누계를 넘습니다. 건당 미화 5천불 이내이거나, 거래 내용과 금액을 서류로 확인할 수 있어야 지급할 수 있습니다.", ["규정 제4-3조"]),
    x.annual > 1e5 ? LIM(x.now, 5000, "누계 초과 후 건당 미화 5천불 이내", "건당 5천불 이내라 증빙서류 없이 지급할 수 있습니다.", "건당 5천불을 넘습니다. 거래 내용과 금액을 서류로 확인한 뒤 지급하세요.", ["규정 제4-3조"]) : null,
    HIT(x.annual > 1e4, x.annual, "국세청·금융감독원 통보 (연간 미화 1만불 초과)", "통보 대상입니다. 매월 다음 달 10일까지 통보합니다.", "통보 기준 미만입니다.", ["규정 제4-8조"]),
@@ -3385,8 +3654,15 @@ const SCEN = [
    HIT(x.now > 1e4, x.now, "관할 세관 신고 (미화 1만불 초과)", "세관에 신고해야 합니다. 은행에서 외국환신고(확인)필증 발급 여부도 확인하세요.", "세관 신고 기준 이하입니다.", ["규정 제6-2조"]),
    INFO("신고하지 않으면", "신고 없이 휴대 수출입하면 과태료 대상이고, 금액이 크면 형사처벌 대상이 될 수 있습니다.", ["법 제32조","법 제29조"]) ] },
  { k:"emig", t:"out_emig", n:"해외이주비 지급", d:"해외이주비 송금의 확인·통보 기준을 봅니다.", c: x => [
-   INFO("거래외국환은행 지정·자금출처확인서", "거래외국환은행을 지정하고, 관할 세무서장이 발급한 자금출처확인서 범위 안에서 지급합니다.", ["규정 제4-3조"]),
+   INFO("자금출처확인서 범위 이내 지급", "관할 세무서장이 발급한 자금출처확인서 범위 안에서 지급합니다. 확인서 한도를 다 쓸 때까지 지급할 수 있습니다.", ["규정 제4-3조", "지침 p.36"]),
+   INFO("거래외국환은행 1곳 지정 · 누계 관리", "1개의 거래외국환은행을 지정해 그 은행에서 지급·누계를 관리합니다. 개별이주가 아니면 세대원은 지정등록 대상이 아닙니다.", ["규정 제4-3조", "규정 제10-11조", "지침 p.36"]),
+   INFO("세대 합계 미화 10만불 기준은 옛 대상자만", "'세대 합계 10만불 초과 시 자금출처확인서' 기준은 2025.2.10 이전에 해외이주자(예정자 포함)로 지정된 사람에게만 적용합니다. 재외동포 재산반출과 중복 적용할 수 없습니다.", ["지침 p.42"]),
    HIT(x.now > 1e4, x.now, "관세청 통보 (건당 미화 1만불 초과)", "통보 대상입니다.", "통보 기준 이하입니다.", ["규정 제4-8조"]) ] },
+ { k:"kor_out", t:"out_emig", n:"재외동포 국내재산 반출", d:"비거주자인 재외동포가 국내 재산(부동산 처분대금, 예금 등)을 해외로 보낼 때 확인할 서류와 은행 지정을 봅니다.", c: x => [
+   INFO("확인서 범위 이내 지급", "관할 세무서장이 발급한 부동산매각자금확인서 또는 자금출처확인서의 범위 안에서만 지급합니다.", ["규정 제4-4조"]),
+   INFO("부동산 처분대금 → 부동산매각자금확인서", "부동산소재지 또는 신청자 최종주소지 관할 세무서장이 발급합니다. 상속·유증으로 취득했다면 등기부등본 등 취득 경위 서류도 받습니다.", ["지침 p.46"]),
+   INFO("예금 등 → 예금등 자금출처확인서", "지정거래외국환은행 소재지 또는 신청자 최종주소지 관할 세무서장이 발급합니다.", ["지침 p.46"]),
+   INFO("지정거래외국환은행 1곳 지정 · 누계 관리", "지정거래외국환은행을 통해서만 지급하고, 그 은행에서 확인서 한도 소진까지 누계를 관리합니다. 해외이주비 지급과 중복 적용할 수 없습니다.", ["규정 제10-11조", "지침 p.36", "지침 p.42"]) ] },
  { k:"cap_pay", t:"out_loan", n:"자본거래 지급 · 소액 신고예외", d:"외국환거래규정 제7장 자본거래(대차, 증권, 예금 등)를 소액이라 신고 없이 할 수 있는지 봅니다. 거주자(외국인거주자 제외) 기준입니다.", c: x => [
    x.now <= 1e5 && x.annual <= 1e5 ? { cls:"ok", mark:"신고예외", label:"건당 미화 10만불 이내 · 연간 누계 10만불 이내", val:x.annual, text:"신고 없이 할 수 있는 소액 자본거래입니다.", refs:["규정 제7-2조"] }
    : x.now <= 5000 ? { cls:"ok", mark:"신고예외", label:"연간 누계 초과 · 건당 미화 5천불 이내", val:x.now, text:"누계를 넘었지만 건당 5천불 이내라 신고예외입니다. 나눠서 보내면 합산합니다.", refs:["규정 제7-2조"] }
@@ -3519,7 +3795,7 @@ function agTools(step){
   return agMaxTools ? tools.slice(0, agMaxTools) : tools;
 }
 (async () => {
-  try { const s = await claude.use("sample"); if (!s) return; const lim = await s.limits(); if (lim && lim.tools){ canTools = true; agMaxTools = lim.tools.maxCount || 0; } imgLimit = (lim && lim.images) || null; attachUI("ask"); } catch {}
+  try { const s = await claude.use("sample"); if (!s){ if (window.__WEB){ imgLimit = { maxCount:10 }; attachUI("ask"); } return; } const lim = await s.limits(); if (lim && lim.tools){ canTools = true; agMaxTools = lim.tools.maxCount || 0; } imgLimit = (lim && lim.images) || null; attachUI("ask"); } catch {}
 })();
 
 
@@ -3572,7 +3848,7 @@ function autoBoxes(p){
 function attachUI(key){
   const host = $("#askAttach"); if (!host) return;
   if (!imgLimit){ host.innerHTML = `<span class="hint">이 화면에서는 서류 첨부(AI 서류 검토)를 쓸 수 없습니다.</span>`; return; }
-  host.innerHTML = `<div class="row"><label class="btn ghost sm att-btn"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 11.5l-8.5 8.5a5 5 0 0 1-7-7L14 4.5a3.3 3.3 0 0 1 4.7 4.7L10.2 17.7a1.7 1.7 0 0 1-2.4-2.4L15.5 7.6\"/></svg> 서류 첨부 (PDF·사진)<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple hidden></label><span class="hint">개인정보를 가린 사본만 AI에 보냅니다. 원본 파일은 저장하거나 전송하지 않습니다.</span></div><div class="att-list"></div>`;
+  host.innerHTML = `<div class="row"><label class="btn ghost sm att-btn"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 11.5l-8.5 8.5a5 5 0 0 1-7-7L14 4.5a3.3 3.3 0 0 1 4.7 4.7L10.2 17.7a1.7 1.7 0 0 1-2.4-2.4L15.5 7.6\"/></svg> 서류 첨부 (PDF·사진)<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple hidden></label><span class="hint">${window.__WEB ? "서류는 이 브라우저 안에서만 열리고 서버로 보내지 않습니다. 가린 뒤 인쇄·PDF로 출력할 수 있습니다." : "개인정보를 가린 사본만 AI에 보냅니다."} 원본 파일은 저장하거나 전송하지 않습니다.</span></div><div class="att-list"></div>`;
   host.querySelector("input").onchange = e => { addFiles(key, [...e.target.files]); e.target.value = ""; };
   host.querySelector(".att-list").addEventListener("click", e => {
     const rm = e.target.closest("[data-rm]"); if (rm){ ATT[key] = ATT[key].filter(x => x.id !== +rm.dataset.rm); renderAtt(key); return; }
@@ -3591,7 +3867,7 @@ function renderAtt(key){
 }
 async function addFiles(key, files){
   const max = (imgLimit && imgLimit.maxCount) || 5;
-  toast("개인정보 보호: 첨부 서류는 성명·주민번호·계좌번호·주소·연락처를 가린 사본만 AI에 보냅니다. 가림 화면에서 가릴 곳을 확인해 주세요.");
+  toast(window.__WEB ? "서류는 이 브라우저 안에서만 열립니다. 가릴 곳을 확인한 뒤 「가린 사본 인쇄·PDF」로 출력하세요." : "개인정보 보호: 첨부 서류는 성명·주민번호·계좌번호·주소·연락처를 가린 사본만 AI에 보냅니다. 가림 화면에서 가릴 곳을 확인해 주세요.");
   for (const f of files){
     const it = { id:++attSeq, name:f.name, file:f, url:URL.createObjectURL(f), status:"읽는 중…", pages:[], confirmed:false, blobs:[], text:"" }; ATT[key].push(it); renderAtt(key);
     try {
@@ -3607,11 +3883,12 @@ async function addFiles(key, files){
 }
 function openRedact(key, id){
   const it = ATT[key].find(x => x.id === id); if (!it) return;
-  redCur = { key, it };
+  redCur = { key, it, hist:[] }; const det = piiFound(it);
   $("#redT").textContent = `개인정보 가리기 · ${it.name}`;
   $("#redNote").innerHTML = it.kind === "img"
     ? "<b>사진·스캔 서류는 글자를 자동으로 찾을 수 없습니다.</b> 성명, 주민·외국인등록번호, 계좌번호, 주소, 연락처, 서명을 마우스로 끌어서 모두 가려 주세요. 가린 사본만 AI에 보냅니다."
     : "번호(주민·외국인등록번호, 계좌, 전화, 여권, 이메일)와 성명·주소·연락처 칸 옆 글자는 자동으로 가렸습니다. <b>빠진 곳은 끌어서 더 가리고</b>, 잘못 가린 곳은 눌러서 지우세요. 가린 사본만 AI에 보냅니다.";
+  $("#redNote").innerHTML += `<div class="pii-guide">${it.kind === "img" ? "<b>자동 감지:</b> 사진·스캔본은 글자를 읽을 수 없어 자동 감지가 되지 않습니다. 주민번호·여권번호·계좌번호를 모두 직접 가려 주세요." : det.length ? `<b>자동 감지:</b> ${det.map(([k, n]) => `${esc(k)} ${n}곳`).join(" · ")} — 검은 상자로 가렸습니다. 빠진 곳이 없는지 확인하세요.` : "<b>자동 감지:</b> 주민번호·여권번호·계좌번호 형식의 글자를 찾지 못했습니다. 화면을 보고 직접 확인하세요."} <span>가림 완료를 누르면 원본은 즉시 파기되고 가린 사본만 남습니다.</span></div>`;
   drawRedact(); if (!$("#redDlg").open) $("#redDlg").showModal();
 }
 function drawRedact(){
@@ -3625,7 +3902,7 @@ function drawRedact(){
   host.addEventListener("pointerdown", e => {
     const pg = e.target.closest(".red-page"); if (!pg || !redCur) return; e.preventDefault();
     const p = redCur.it.pages[+pg.dataset.p], bx = e.target.closest(".red-box");
-    if (bx){ p.boxes.splice(+bx.dataset.b, 1); drawRedact(); return; }
+    if (bx){ redPush(); p.boxes.splice(+bx.dataset.b, 1); drawRedact(); return; }
     const r = pg.getBoundingClientRect(), tmp = document.createElement("div"); tmp.className = "red-box tmp"; pg.append(tmp);
     drag = { pg, p, r, x0:e.clientX - r.left, y0:e.clientY - r.top, tmp }; pg.setPointerCapture(e.pointerId);
   });
@@ -3633,7 +3910,7 @@ function drawRedact(){
   host.addEventListener("pointerup", e => {
     if (!drag) return; const { r, x0, y0, p } = drag, x = Math.max(0, Math.min(r.width, e.clientX - r.left)), y = Math.max(0, Math.min(r.height, e.clientY - r.top)); drag = null;
     const w = Math.abs(x - x0), h = Math.abs(y - y0);
-    if (w > 6 && h > 4){ const k = p.W / r.width; p.boxes.push({ x:Math.min(x, x0) * k, y:Math.min(y, y0) * (p.H / r.height), w:w * k, h:h * (p.H / r.height) }); }
+    if (w > 6 && h > 4){ redPush(); const k = p.W / r.width; p.boxes.push({ x:Math.min(x, x0) * k, y:Math.min(y, y0) * (p.H / r.height), w:w * k, h:h * (p.H / r.height) }); }
     drawRedact();
   });
 })();
@@ -3648,15 +3925,20 @@ async function confirmRedact(){
     text += p.items.filter(t => !hit(t)).map(t => t.str).join(" ").replace(/\s+/g, " ") + "\n";
   }
   it.blobs = blobs; it.text = maskPII(text.trim()).text.slice(0, 6000); it.confirmed = true;
+  destroyOriginal(it);
   const n = it.pages.reduce((a, p) => a + p.boxes.length, 0);
   it.status = `가림 완료 · ${n}곳 가림${it.total > it.pages.length ? ` · 앞 ${it.pages.length}쪽` : ""}`;
   renderAtt(key);
   const next = ATT[key].find(x => !x.bad && !x.confirmed);
-  if (next) openRedact(key, next.id); else { $("#redDlg").close(); toast("가림을 마쳤습니다. 가린 사본만 AI에 보냅니다.", 4000); }
+  if (next) openRedact(key, next.id); else { $("#redDlg").close(); toast(window.__WEB ? "가림을 마쳤습니다. 원본은 파기했습니다. '가린 사본 저장'으로 받아 Claude 검토에 첨부할 수 있습니다." : "가림을 마쳤습니다. 가린 사본만 AI에 보냅니다.", 4000); }
 }
 $("#redOk").onclick = confirmRedact;
 $("#redX").onclick = () => $("#redDlg").close();
-$("#redReset").onclick = () => { if (!redCur) return; redCur.it.pages.forEach(p => { p.boxes = autoBoxes(p); }); drawRedact(); };
+$("#redReset").onclick = () => { if (!redCur) return; redPush(); redCur.it.pages.forEach(p => { p.boxes = autoBoxes(p); }); drawRedact(); };
+$("#redUndo").onclick = redUndo;
+$("#redPrint").onclick = printRedacted;
+$("#redSave").onclick = saveRedacted;
+document.addEventListener("keydown", e => { if ($("#redDlg").open && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){ e.preventDefault(); redUndo(); } });
 function attReady(key){
   const pend = ATT[key].filter(x => !x.bad && !x.confirmed && x.pages.length);
   if (!pend.length) return true;
@@ -3683,6 +3965,7 @@ async function openAttView(k, idx = 0, mode = "orig"){
   B.innerHTML = '<p class="hint">불러오는 중…</p>';
   if (!$("#attDlg").open) $("#attDlg").showModal();
   try {
+    if (!it.file && mode !== "sent") mode = "sent";
     if (mode === "sent"){ B.innerHTML = `<p class="hint">개인정보를 가린 뒤 AI에 보낸 이미지입니다.</p>` + it.sent.map(b => `<img class="att-img" src="${URL.createObjectURL(b)}" alt="">`).join(""); return; }
     if (it.kind === "pdf"){ const lib = await loadPdfJs(), doc = await lib.getDocument({ data: await it.file.arrayBuffer() }).promise; B.innerHTML = `<p class="hint">원본 ${doc.numPages}쪽 · 이 화면에서만 보이며 저장·전송되지 않습니다.</p>`;
       for (let i = 1; i <= doc.numPages && i <= 30; i++){ const pg = await doc.getPage(i), vp = pg.getViewport({ scale:1.6 }), cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; cv.className = "att-img"; await pg.render({ canvasContext:cv.getContext("2d"), viewport:vp }).promise; B.append(cv); } }
@@ -3690,6 +3973,243 @@ async function openAttView(k, idx = 0, mode = "orig"){
   } catch { B.innerHTML = '<p class="hint">파일을 열지 못했습니다.</p>'; }
 }
 $("#attX").onclick = () => $("#attDlg").close();
+
+/* ---------- 15차: 4단계 판정 · 근거 가드레일 ---------- */
+const TIER_L = ["확인 필요", "① 신고 불요", "② 지정은행 확인", "③ 한국은행 신고", "④ 재정경제부 신고"];
+const TIER_S = ["", "①신고불요", "②지정은행 확인", "③한국은행 신고", "④재경부 신고"];
+const TIER_D = ["", "신고·확인 없이 처리", "외국환은행·지정거래외국환은행 신고·확인", "한국은행총재 신고·신고수리", "재정경제부장관 신고·신고수리·허가"];
+function tierOf(v){
+  v = v || {}; const g = String(v["신고구분"] || ""), st = String(v["신고여부"] || ""), org = String(v["신고기관"] || "") + " " + String(v["신고유형"] || "");
+  const m = g.match(/[①②③④]/); if (m) return "①②③④".indexOf(m[0]) + 1;
+  if (/확인 필요/.test(g)) return 0;
+  if (!st || /확인 필요/.test(st)) return 0;
+  if (/재정경제부|기획재정부/.test(org)) return 4;
+  if (/한국은행/.test(org)) return 3;
+  if (/외국환은행|지정거래|은행의 장|은행 확인/.test(org)) return 2;
+  if (/불요|예외/.test(st)) return 1;
+  return 0;
+}
+function guardOf(v, text){
+  v = v || {}; const reasons = [], tier = tierOf(v), bc = String(v["본점확인"] || "");
+  if (!tier) reasons.push("판정이 '확인 필요'이거나 4단계 신고구분으로 확정되지 않음");
+  if (/필요/.test(bc) && !/불요|불필요/.test(bc)) reasons.push(bc.replace(/^\s*필요\s*[—\-:·]?\s*/, "") || "검토 의견에서 본점 확인 필요로 표시");
+  if (text != null && text !== ""){
+    const re = new RegExp("\\[" + REF_RE + "\\]", "g"); let m; const ok = new Set(), bad = new Set();
+    while ((m = re.exec(text))) (byId[m[1]] ? ok : bad).add(m[1]);
+    if (!ok.size) reasons.push("원문으로 확인된 근거 조문 인용이 없음");
+    else if ("신고구분" in v && !/제\s?\d+(?:-\d+)?조/.test(String(v["근거조문"] || ""))) reasons.push("판정에 조·항·호 근거조문이 적혀 있지 않음");
+    if (bad.size) reasons.push(`내장 원문에 없는 조문 인용 ${bad.size}건 (${[...bad].slice(0, 3).join(", ")})`);
+  }
+  return { tier, amber: reasons.length > 0, reasons, basis: String(v["근거조문"] || "") };
+}
+function tierHTML(G){
+  return `<div class="tier" role="group" aria-label="신고 구분 4단계">${[1, 2, 3, 4].map(n => `<div class="tier-s${G.tier === n ? " on t" + n : ""}" title="${TIER_D[n]}"><b>${TIER_L[n]}</b><span>${TIER_D[n]}</span></div>`).join("")}</div>`
+    + (G.basis ? `<p class="tier-basis"><b>근거조문</b> ${esc(G.basis)}</p>` : "")
+    + (G.amber ? `<div class="amber-box"><b>⚠ 외환사업부(본점) 심층 확인 필요</b><ul>${G.reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul><span>이 판정은 그대로 처리하지 말고 외환사업부에 확인한 뒤 처리하세요.</span></div>` : "");
+}
+
+/* ---------- 인쇄 · 파일 ---------- */
+function printHTML(html, fname, say){
+  if (!window.__WEB){ return saveFile(fname || `JB환이_${TODAY}.html`, html, t => (say || setStatus)(`인쇄용 파일: ${t} 파일을 열어 인쇄(Ctrl+P)하면 PDF로도 저장할 수 있습니다.`)); }
+  const f = document.createElement("iframe"); f.setAttribute("aria-hidden", "true");
+  f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.append(f);
+  const d = f.contentDocument; d.open(); d.write(html); d.close();
+  const go = () => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch {} setTimeout(() => f.remove(), 60000); };
+  const imgs = [...d.images].filter(i => !i.complete);
+  if (!imgs.length) setTimeout(go, 300); else Promise.all(imgs.map(i => new Promise(r => { i.onload = i.onerror = r; }))).then(() => setTimeout(go, 100));
+}
+const PRINT_CSS = `@page{size:A4;margin:14mm 15mm}*{box-sizing:border-box}html,body{background:#fff}body{margin:0;font-family:"Pretendard","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#0F172A;font-size:12px;line-height:1.6;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.doc{max-width:182mm;margin:0 auto}
+.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #003087;padding-bottom:8px;margin-bottom:14px}
+.hd h1{font-size:19px;margin:0;letter-spacing:-.02em;color:#0F172A}.hd .org{font-size:11px;color:#003087;font-weight:700;letter-spacing:.02em}.hd small{display:block;color:#64748B;font-size:10.5px;text-align:right}
+h2{font-size:12.5px;color:#003087;margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid #E2E8F0}
+table.kv{width:100%;border-collapse:collapse}table.kv td{border:1px solid #E2E8F0;padding:5px 8px;vertical-align:top}table.kv td.k{background:#F8FAFC;width:96px;font-weight:600;color:#334155;white-space:nowrap}
+.tiers{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.ts{border:1px solid #E2E8F0;border-radius:6px;padding:6px 8px;color:#94A3B8}.ts b{display:block;font-size:12px}.ts span{font-size:10px}
+.ts.on{border:2px solid #003087;color:#003087;background:#EEF2FA}.amb{margin-top:8px;border:1px solid #F59E0B;background:#FFFBEB;color:#92400E;border-radius:6px;padding:7px 10px}.amb b{display:block}.amb ul{margin:4px 0 0;padding-left:16px}
+.sum{margin:8px 0 0;padding:7px 10px;background:#F8FAFC;border-radius:6px}
+ul.ck{list-style:none;margin:0;padding:0}ul.ck li{display:flex;gap:8px;padding:5px 2px;border-bottom:1px dashed #E2E8F0}ul.ck li:before{content:"";flex:none;width:12px;height:12px;border:1.5px solid #475569;border-radius:2px;margin-top:3px}
+ul.dot{margin:0;padding-left:16px}ul.dot li{padding:2px 0}
+.law li b{color:#003087}.muted{color:#64748B}
+.ft{margin-top:18px;border-top:1px solid #E2E8F0;padding-top:6px;font-size:10px;color:#64748B}
+.page{page-break-after:always;text-align:center}.page img{max-width:100%;max-height:255mm}.page:last-child{page-break-after:auto}
+@media screen{body{background:#F1F5F9;padding:16px}.doc{background:#fff;padding:14mm 15mm;box-shadow:0 1px 3px rgba(0,0,0,.1)}}`;
+function secOf(body, re){ const s = sections(body || "").find(x => re.test(x.h)); return s ? s.lines.slice(1) : []; }
+function formsOf(body){
+  const lines = secOf(body, /필요 서식/); if (!lines.length) return [];
+  const keys = [...new Set([...md(lines.join("\n")).matchAll(/data-form="([^"]+)"/g)].map(m => m[1]).filter(n => FORM_BY[n]))];
+  return keys.map(k => { const f = FORM_BY[k]; return f.grp ? `${FGRP[f.grp]} ${f.label} ${f.title}` : `지침서식 제${f.no}호 ${f.title}`; });
+}
+function lawsOf(answer, v){
+  const re = new RegExp("\\[" + REF_RE + "\\]", "g"); let m; const out = [];
+  const basis = secOf(splitVerdict(answer || "").body || answer || "", /^근거|근거$/);
+  basis.forEach(l => { const t = plain(l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "")); const mm = t.match(new RegExp("\\[" + REF_RE + "\\]")); if (mm && byId[mm[1]]) out.push({ id:mm[1], text:t.replace(mm[0], "").replace(/^\s*[:：\-–—·]\s*/, "").trim() }); });
+  if (!out.length) while ((m = re.exec(answer || ""))) if (byId[m[1]] && !out.some(x => x.id === m[1])) out.push({ id:m[1], text:"" });
+  return out;
+}
+function printCase(c, say){
+  const v = caseVerdict(c), G = guardOf(v, c.snap ? null : (c.answer || "")), p = splitVerdict(c.answer || ""), body = p.body || c.answer || "";
+  const docs = secItems(body, /제출서류/), forms = formsOf(body), cautions = secText(body, /유의사항/), more = secText(body, /추가 확인/), laws = lawsOf(c.answer, v);
+  const row = (k, x) => x ? `<tr><td class="k">${k}</td><td>${esc(x)}</td></tr>` : "";
+  const now = new Date().toLocaleString("ko-KR", { timeZone:"Asia/Seoul" });
+  const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>외환거래 검토 결과서</title><style>${PRINT_CSS}</style></head><body><div class="doc">
+<div class="hd"><div><div class="org">JB 전북은행 · 외환사업부</div><h1>외환거래 검토 결과서</h1></div><small>검토 ${esc(fmtDate(c.createdAt || new Date().toISOString()))}<br>출력 ${esc(now)}</small></div>
+<h2>1. 거래 개요</h2><table class="kv">${row("거래유형", c.type)}${row("질의", c.q)}${c.facts ? `<tr><td class="k">사실관계</td><td>${esc(c.facts).replace(/\n/g, "<br>")}</td></tr>` : ""}${row("지점 · 담당", [c.branch, c.staff].filter(Boolean).join(" · "))}${row("고객", c.custName || custOf(c))}</table>
+<h2>2. 판정 결과 (4단계 신고 구분)</h2><div class="tiers">${[1, 2, 3, 4].map(n => `<div class="ts${G.tier === n ? " on" : ""}"><b>${TIER_L[n]}</b><span>${TIER_D[n]}</span></div>`).join("")}</div>
+${G.amber ? `<div class="amb"><b>⚠ 외환사업부(본점) 심층 확인 필요</b><ul>${G.reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>` : ""}
+<table class="kv" style="margin-top:8px">${row("신고 여부", v["신고여부"] || "확인 필요")}${row("신고 기관", v["신고기관"])}${row("신고 시기", v["신고시기"])}${row("지정은행", v["지정거래외국환은행"])}</table>${v["요지"] ? `<p class="sum">${esc(v["요지"])}</p>` : ""}
+<h2>3. 근거 법령 조문</h2>${G.basis ? `<p><b>근거조문</b> ${esc(G.basis)}</p>` : ""}${laws.length ? `<ul class="dot law">${laws.map(l => `<li><b>${esc(l.id)}</b>${l.text ? " — " + esc(l.text) : ""}</li>`).join("")}</ul>` : `<p class="muted">원문으로 확인된 근거 조문이 없습니다. 외환사업부에 확인하세요.</p>`}
+<h2>4. 필수 징구 서류</h2>${docs.length ? `<ul class="ck">${docs.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="muted">검토 결과에 제출서류 목록이 없습니다.</p>`}
+${forms.length ? `<p style="margin:8px 0 2px"><b>창구 작성 서식 (서식함)</b></p><ul class="ck">${forms.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+<h2>5. 고객 상담 유의사항</h2>${cautions.length ? `<ul class="dot">${cautions.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="muted">해당 없음</p>`}
+${more.length ? `<h2>추가 확인 필요</h2><ul class="dot">${more.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+<div class="ft">JB 환이 1차 검토 결과를 정리한 창구 참고용 자료입니다. 공식 해석은 재정경제부 외환제도과·한국은행 외환심사팀 회신을 따르며, 근거 조문은 원문으로 확인하세요.</div>
+</div></body></html>`;
+  printHTML(html, `검토결과서_${String(c.type || "").split(" · ").pop().replace(/[\\/:*?"<>|()·\s]+/g, "_")}_${TODAY}.html`, say || setStatus);
+}
+async function maskedPages(it){
+  const out = [];
+  for (const p of it.pages){ const cv = document.createElement("canvas"); cv.width = p.W; cv.height = p.H; const cx = cv.getContext("2d"); cx.drawImage(p.canvas, 0, 0); cx.fillStyle = "#000"; for (const b of p.boxes) cx.fillRect(b.x, b.y, b.w, b.h); out.push(cv); }
+  return out;
+}
+async function printRedacted(){
+  if (!redCur) return; const { it } = redCur; const cvs = await maskedPages(it);
+  printHTML(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>가린 사본 · ${esc(it.name)}</title><style>${PRINT_CSS}</style></head><body>${cvs.map((c, i) => `<div class="page"><img src="${c.toDataURL("image/jpeg", 0.9)}" alt="${i + 1}쪽"></div>`).join("")}</body></html>`, `가린사본_${it.name.replace(/\.[^.]+$/, "")}.html`, t => toast(t));
+}
+async function saveRedacted(){
+  if (!redCur) return; const { it } = redCur; const cvs = await maskedPages(it), base = "가린사본_" + it.name.replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|\s]+/g, "_");
+  const blobs = await Promise.all(cvs.map(c => new Promise(r => c.toBlob(r, "image/jpeg", 0.9))));
+  if (blobs.length === 1) return saveFile(base + ".jpg", blobs[0], t => toast("가린 사본: " + t));
+  const Z = await loadZip(), z = new Z(); blobs.forEach((b, i) => z.file(`${base}_${i + 1}쪽.jpg`, b));
+  saveFile(base + ".zip", await z.generateAsync({ type:"blob" }), t => toast("가린 사본: " + t));
+}
+function piiFound(it){
+  const cnt = {};
+  for (const p of it.pages || []){ const txt = (p.items || []).map(t => t.str).join(" ");
+    for (const [re, name, ok] of PII_RULES){ const r = new RegExp(re.source, "g"); let m; while ((m = r.exec(txt))){ if (!m[0].length){ r.lastIndex++; continue; } if (ok && !ok(m[0])) continue; cnt[name] = (cnt[name] || 0) + 1; } } }
+  return Object.entries(cnt);
+}
+function redPush(){ if (redCur) { redCur.hist.push(redCur.it.pages.map(p => p.boxes.map(b => ({ ...b })))); if (redCur.hist.length > 50) redCur.hist.shift(); } }
+function redUndo(){ if (!redCur || !redCur.hist.length){ toast("되돌릴 작업이 없습니다.", 2500); return; } const s = redCur.hist.pop(); redCur.it.pages.forEach((p, i) => { p.boxes = s[i] || []; }); drawRedact(); }
+function destroyOriginal(it){
+  for (const p of it.pages){ const cx = p.canvas.getContext("2d"); cx.fillStyle = "#000"; for (const b of p.boxes) cx.fillRect(b.x, b.y, b.w, b.h);
+    const hit = t => p.boxes.some(b => t.x < b.x + b.w && t.x + t.w > b.x && t.y < b.y + b.h && t.y + t.h > b.y);
+    p.items = (p.items || []).filter(t => !hit(t)); p.src = p.canvas.toDataURL("image/jpeg", 0.85); p.boxes = []; }
+  try { if (it.url) URL.revokeObjectURL(it.url); } catch {}
+  it.file = null; it.url = null; it.destroyed = true;
+}
+
+/* ---------- 고객 필요 서류 안내장 ---------- */
+let GD = null;
+function lines(s){ return String(s || "").split("\n").map(x => x.replace(/^\s*(?:[-*•☐□]|\d+[.)])\s*/, "").trim()).filter(Boolean); }
+function openGuide(c){
+  const p = splitVerdict(c.answer || ""), body = p.body || c.answer || "";
+  const tp = String(c.type || "").split(" · ").pop();
+  let mem = {}; try { mem = { b:localStorage.getItem("fxdesk.branch") || "", s:localStorage.getItem("fxdesk.staff") || "", t:localStorage.getItem("fxdesk.phone") || "" }; } catch {}
+  $("#gCust").value = c.custName && !/\*/.test(c.custName) ? c.custName : "";
+  $("#gPurpose").value = tp || "";
+  $("#gDocs").value = secItems(body, /제출서류/).map(x => x.replace(/\s*\((?:규정|지침|법|시행령)[^)]*\)\s*$/, "")).join("\n");
+  $("#gForms").value = formsOf(body).join("\n");
+  $("#gNotes").value = ["서류는 원본을 지참해 주시고, 신분증(여권 등)을 함께 가져와 주세요.", "발급 기관과 기한이 정해진 서류는 미리 확인해 주세요.", "상담 내용에 따라 추가 서류를 요청드릴 수 있습니다."].join("\n");
+  $("#gBranch").value = c.branch || mem.b || ""; $("#gStaff").value = c.staff || mem.s || ""; $("#gPhone").value = mem.t || "";
+  $("#gSt").textContent = c.answer ? "검토 결과의 제출서류·서식을 채웠습니다. 고객에게 맞게 고친 뒤 출력하세요." : "검토 본문이 없어 필요 서류를 직접 적어 주세요.";
+  guideRender(); if (!$("#guideDlg").open) $("#guideDlg").showModal();
+}
+function guideData(){
+  return { cust:$("#gCust").value.trim(), purpose:$("#gPurpose").value.trim(), docs:lines($("#gDocs").value), forms:lines($("#gForms").value), notes:lines($("#gNotes").value),
+    branch:$("#gBranch").value.trim(), staff:$("#gStaff").value.trim(), phone:$("#gPhone").value.trim(), date:new Date().toLocaleDateString("ko-KR", { timeZone:"Asia/Seoul", year:"numeric", month:"long", day:"numeric" }) };
+}
+function guideHTML(G, standalone){
+  const inner = `<div class="hd"><div><div class="org">JB 전북은행</div><h1>외환거래 필요 서류 안내</h1></div><small>${esc(G.date)}</small></div>
+<table class="kv">${G.cust ? `<tr><td class="k">고객명</td><td>${esc(G.cust)} 님</td></tr>` : `<tr><td class="k">고객명</td><td>&nbsp;</td></tr>`}<tr><td class="k">거래 목적</td><td>${esc(G.purpose || "")}</td></tr></table>
+<h2>준비하실 서류</h2>${G.docs.length ? `<ul class="ck">${G.docs.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="muted">담당 직원이 안내해 드립니다.</p>`}
+${G.forms.length ? `<h2>창구에서 작성하실 서식</h2><ul class="ck">${G.forms.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+${G.notes.length ? `<h2>준비 시 유의사항</h2><ul class="dot">${G.notes.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+<h2>담당 안내</h2><table class="kv"><tr><td class="k">지점</td><td>전북은행 ${esc(G.branch)}</td></tr><tr><td class="k">담당자</td><td>${esc(G.staff)}</td></tr><tr><td class="k">연락처</td><td>${esc(G.phone)}</td></tr></table>
+<div class="ft">본 안내장은 상담 내용을 바탕으로 준비 서류를 안내해 드리는 자료이며, 실제 거래 시 관계 법령에 따라 추가 서류를 요청드릴 수 있습니다.</div>`;
+  return standalone ? `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>외환거래 필요 서류 안내</title><style>${PRINT_CSS}</style></head><body><div class="doc">${inner}</div></body></html>` : inner;
+}
+function guideRender(){ GD = guideData(); $("#gPrev").innerHTML = guideHTML(GD, false); }
+function guideName(ext){ const G = GD || guideData(); return `필요서류안내_${(G.purpose || "외환거래").replace(/[\\/:*?"<>|()·\s]+/g, "_").slice(0, 30)}_${TODAY}.${ext}`; }
+const xq = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+async function makeDocx(G){
+  const Z = await loadZip(), z = new Z();
+  const R = (t, o = {}) => `<w:r><w:rPr><w:rFonts w:ascii="Malgun Gothic" w:hAnsi="Malgun Gothic" w:eastAsia="맑은 고딕"/>${o.b ? "<w:b/>" : ""}${o.c ? `<w:color w:val="${o.c}"/>` : ""}<w:sz w:val="${o.sz || 21}"/></w:rPr><w:t xml:space="preserve">${xq(t)}</w:t></w:r>`;
+  const Pp = (runs, o = {}) => `<w:p><w:pPr>${o.bdr ? '<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="4" w:color="003087"/></w:pBdr>' : ""}<w:spacing w:before="${o.before || 0}" w:after="${o.after == null ? 80 : o.after}"/>${o.ind ? `<w:ind w:left="${o.ind}"/>` : ""}${o.right ? '<w:jc w:val="right"/>' : ""}</w:pPr>${runs}</w:p>`;
+  const H2 = t => Pp(R(t, { b:true, c:"003087", sz:24 }), { before:240, after:100 });
+  const cell = (t, w, o = {}) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${o.fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.fill}"/>` : ""}</w:tcPr>${Pp(R(t, { b:o.b, sz:20 }), { after:0 })}</w:tc>`;
+  const tbl = rows => `<w:tbl><w:tblPr><w:tblW w:w="9638" w:type="dxa"/><w:tblBorders>${["top","left","bottom","right","insideH","insideV"].map(s => `<w:${s} w:val="single" w:sz="4" w:color="CBD5E1"/>`).join("")}</w:tblBorders><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="110" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="110" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="1800"/><w:gridCol w:w="7838"/></w:tblGrid>${rows.map(([k, v]) => `<w:tr>${cell(k, 1800, { fill:"F1F5F9", b:true })}${cell(v, 7838)}</w:tr>`).join("")}</w:tbl>`;
+  const ck = arr => arr.map(x => Pp(R("☐  " + x, { sz:21 }), { ind:200, after:60 })).join("");
+  const dot = arr => arr.map(x => Pp(R("·  " + x, { sz:20 }), { ind:200, after:40 })).join("");
+  const body = Pp(R("JB 전북은행", { b:true, c:"003087", sz:20 })) + Pp(R("외환거래 필요 서류 안내", { b:true, sz:34 }), { bdr:true, after:120 }) + Pp(R(G.date, { c:"64748B", sz:18 }), { right:true, after:160 })
+    + tbl([["고객명", G.cust ? G.cust + " 님" : ""], ["거래 목적", G.purpose]])
+    + H2("준비하실 서류") + (G.docs.length ? ck(G.docs) : Pp(R("담당 직원이 안내해 드립니다.", { c:"64748B" })))
+    + (G.forms.length ? H2("창구에서 작성하실 서식") + ck(G.forms) : "")
+    + (G.notes.length ? H2("준비 시 유의사항") + dot(G.notes) : "")
+    + H2("담당 안내") + tbl([["지점", "전북은행 " + G.branch], ["담당자", G.staff], ["연락처", G.phone]])
+    + Pp(R("본 안내장은 상담 내용을 바탕으로 준비 서류를 안내해 드리는 자료이며, 실제 거래 시 관계 법령에 따라 추가 서류를 요청드릴 수 있습니다.", { c:"64748B", sz:17 }), { before:300 });
+  z.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>');
+  z.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>');
+  z.file("docProps/core.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>외환거래 필요 서류 안내</dc:title><dc:creator>JB 환이</dc:creator></cp:coreProperties>`);
+  z.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`);
+  Object.keys(z.files).forEach(n => { if (z.files[n].dir) delete z.files[n]; });
+  return z.generateAsync({ type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document", compression:"DEFLATE" });
+}
+/* 한글(HWPX) 빈 문서 바탕: python-hwpx Skeleton.hwpx (Apache-2.0), 글자 모양 4종 추가 */
+const HWPX_B64 = "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";
+async function makeHwpx(G){
+  const Z = await loadZip(), z = await Z.loadAsync(HWPX_B64, { base64:true });
+  let sec = await z.file("Contents/section0.xml").async("string"), id = 1, txt = [];
+  const Pq = (t, cp = 0) => { txt.push(t); return `<hp:p id="${id++}" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="${cp}"><hp:t>${xq(t)}</hp:t></hp:run></hp:p>`; };
+  const blank = () => Pq("", 0);
+  let b = Pq("JB 전북은행", 9) + Pq("외환거래 필요 서류 안내", 7) + Pq(G.date, 10) + blank()
+    + Pq(`고객명: ${G.cust ? G.cust + " 님" : ""}`, 6) + Pq(`거래 목적: ${G.purpose}`, 6) + blank()
+    + Pq("■ 준비하실 서류", 8) + (G.docs.length ? G.docs.map(x => Pq("  ☐ " + x, 6)).join("") : Pq("  담당 직원이 안내해 드립니다.", 6));
+  if (G.forms.length) b += blank() + Pq("■ 창구에서 작성하실 서식", 8) + G.forms.map(x => Pq("  ☐ " + x, 6)).join("");
+  if (G.notes.length) b += blank() + Pq("■ 준비 시 유의사항", 8) + G.notes.map(x => Pq("  · " + x, 0)).join("");
+  b += blank() + Pq("■ 담당 안내", 8) + Pq(`  지점: 전북은행 ${G.branch}`, 6) + Pq(`  담당자: ${G.staff}`, 6) + Pq(`  연락처: ${G.phone}`, 6) + blank()
+    + Pq("본 안내장은 상담 내용을 바탕으로 준비 서류를 안내해 드리는 자료이며, 실제 거래 시 관계 법령에 따라 추가 서류를 요청드릴 수 있습니다.", 10);
+  z.file("Contents/section0.xml", sec.replace("</hs:sec>", b + "</hs:sec>"));
+  z.file("Preview/PrvText.txt", txt.join("\r\n").slice(0, 1000));
+  z.file("mimetype", "application/hwp+zip", { compression:"STORE" });
+  Object.keys(z.files).forEach(n => { if (z.files[n].dir) delete z.files[n]; });
+  return z.generateAsync({ type:"blob", mimeType:"application/hwp+zip", compression:"DEFLATE" });
+}
+["#gCust", "#gPurpose", "#gDocs", "#gForms", "#gNotes", "#gBranch", "#gStaff", "#gPhone"].forEach(s => $(s).addEventListener("input", guideRender));
+$("#gPhone").addEventListener("change", () => { try { localStorage.setItem("fxdesk.phone", $("#gPhone").value.trim()); } catch {} });
+$("#gX").onclick = () => $("#guideDlg").close();
+$("#gPrint").onclick = () => { guideRender(); printHTML(guideHTML(GD, true), guideName("html"), t => { $("#gSt").textContent = t; }); };
+$("#gDocx").onclick = async ev => { const b = ev.currentTarget; b.disabled = true; try { guideRender(); await saveFile(guideName("docx"), await makeDocx(GD), t => { $("#gSt").textContent = "워드 파일: " + t; }); } catch { $("#gSt").textContent = "워드 파일을 만들지 못했습니다."; } finally { b.disabled = false; } };
+$("#gHwp").onclick = async ev => { const b = ev.currentTarget; b.disabled = true; try { guideRender(); let blob = await makeHwpx(GD), name = guideName("hwpx");
+    if (!window.__WEB){ const Z = await loadZip(), z = new Z(); z.file(name, blob); blob = await z.generateAsync({ type:"blob" }); name = name.replace(/\.hwpx$/, ".zip"); }
+    await saveFile(name, blob, t => { $("#gSt").textContent = "한글 파일: " + t; }); } catch { $("#gSt").textContent = "한글 파일을 만들지 못했습니다."; } finally { b.disabled = false; } };
+
+/* ---------- 헤더: Claude AI 연결 ---------- */
+function claudeState(){ return window.__WEB ? "web" : (sample ? "on" : (sampleReady ? "off" : "wait")); }
+function claudeBtnSync(){ const s = claudeState(), t = $("#claudeBtnT"); if (!t) return; t.textContent = s === "on" ? "Claude AI 연결됨" : "Claude AI 로그인 / 연결"; $("#claudeBtn").classList.toggle("on", s === "on"); }
+$("#claudeBtn").onclick = () => {
+  const s = claudeState(), url = (window.FX_WEB && FX_WEB.claudeUrl) || "https://claude.ai/artifact/DDnczYEeDHT7s2JAFxYb3J";
+  $("#claudeB").innerHTML = s === "on"
+    ? `<p><b>Claude AI가 연결되어 있습니다.</b> 'AI 거래 검토'에서 바로 검토할 수 있습니다. 검토할 때마다 로그인한 본인 Claude 사용량이 차감됩니다.</p><p class="hint">고객 실명·주민번호·계좌번호는 적지 마세요. 번호 형식은 자동으로 가리고, 첨부 서류는 가린 사본만 보냅니다.</p>`
+    : `<p><b>AI 거래 검토는 Claude 화면에서 실행됩니다.</b> ${s === "web" ? "이 사이트는 고객정보 보호를 위해 AI를 직접 부르지 않습니다." : "지금은 Claude에 로그인되어 있지 않습니다."}</p>
+<ol class="cl-steps"><li>아래 버튼으로 Claude 화면을 엽니다.</li><li>claude.ai에 로그인합니다 (팀에서 안내받은 계정).</li><li>'AI 거래 검토'에 질의를 붙여 넣고 검토합니다. 증빙서류는 이 사이트에서 가린 사본을 저장해 첨부하세요.</li><li>검토 결과는 팀 검토 내역에 남습니다.</li></ol>
+<a class="btn" href="${url}" target="_blank" rel="noopener">Claude에서 AI 검토 열기</a>`;
+  $("#claudeDlg").showModal();
+};
+$("#claudeX").onclick = () => $("#claudeDlg").close();
+setTimeout(claudeBtnSync, 0); setTimeout(claudeBtnSync, 2500); setTimeout(claudeBtnSync, 8000);
+
+/* ---------- 홈: 증빙서류 첨부 ---------- */
+$("#hqFile").onchange = e => { const fs = [...e.target.files]; e.target.value = ""; if (!fs.length) return;
+  if (!imgLimit){ $("#hqSt").textContent = "이 화면에서는 서류 첨부를 쓸 수 없습니다. Claude에 로그인한 뒤 다시 시도하세요."; return; }
+  addFiles("ask", fs); $("#hqSt").textContent = `서류 ${fs.length}건을 열었습니다. 개인정보를 가린 뒤 '가림 완료'를 누르면 원본은 파기되고 가린 사본만 남습니다.`; };
+
+/* ---------- 웹 버전: AI 검토는 Claude 화면으로 ---------- */
+async function toClaude(q, say){
+  let copied = false; try { await navigator.clipboard.writeText(maskPII(q).text); copied = true; } catch {}
+  window.open(FX_WEB.claudeUrl, "_blank", "noopener");
+  say(copied ? "질의를 복사했습니다. 새로 열린 Claude 화면의 질의 칸에 붙여 넣고 검토하세요." : "Claude 화면을 열었습니다. 질의를 그 화면에 적어 검토하세요.");
+}
 
 /* ---------- 필요 서식 한번에 받기 ---------- */
 let zipReady = null;
@@ -3795,7 +4315,7 @@ function renderHome(){
     .map(([k, v, u, cl]) => `<div class="kpi ${cl}"><span>${k}</span><b>${v}<small>${u}</small></b></div>`).join("");
   const rec = all.slice(0, 6);
   $("#homeRecent").innerHTML = rec.length ? `<div class="dt-wrap"><table class="dt"><thead><tr><th>일시</th><th>지점 · 담당</th><th>거래유형</th><th>거래 내용</th><th>판정</th></tr></thead><tbody>` + rec.map(c => { const v = caseVerdict(c), st = v["신고여부"] || "확인 필요", tp = String(c.type || "").split(" · ");
-      return `<tr data-case="${esc(c.id)}" tabindex="0"><td class="dt-d">${esc(hDate(c))}</td><td>${esc(c.branch || "-")}${c.staff ? `<small>${esc(c.staff)}</small>` : ""}</td><td>${esc(tp[tp.length - 1] || "")}</td><td class="dt-q"><span>${esc(String(c.q || "").replace(/\s+/g, " "))}</span></td><td><span class="pill ${verdictClass(st)}">${esc(st)}</span></td></tr>`; }).join("") + `</tbody></table></div>`
+      return `<tr data-case="${esc(c.id)}" tabindex="0"><td class="dt-d">${esc(hDate(c))}</td><td>${esc(c.branch || "-")}${c.staff ? `<small>${esc(c.staff)}</small>` : ""}</td><td>${esc(tp[tp.length - 1] || "")}</td><td class="dt-q"><span>${esc(String(c.q || "").replace(/\s+/g, " "))}</span></td><td><span class="pill ${verdictClass(st)}">${esc(st)}</span>${(() => { const g = guardOf(v, c.snap ? null : (c.answer || null)); return g.amber ? `<span class="pill amber" title="${esc(g.reasons.join(" / "))}">본점 확인</span>` : (g.tier ? `<small>${TIER_S[g.tier]}</small>` : ""); })()}</td></tr>`; }).join("") + `</tbody></table></div>`
     : `<p class="empty">아직 검토 내역이 없습니다. 왼쪽 위 입력창에서 첫 검토를 시작해 보세요.</p>`;
   const ch = ((UPDATES && UPDATES.changes) || []).slice().reverse();
   const SB = { "시행":"live", "공포(시행 전)":"soon", "예고":"pre" };
@@ -3831,6 +4351,7 @@ $("#hqGo").onclick = () => {
   const q = $("#hqQ").value.trim();
   if (!q){ $("#hqSt").textContent = "거래 상황을 먼저 적어 주세요."; $("#hqQ").focus(); return; }
   if (busy){ $("#hqSt").textContent = "검토가 진행 중입니다. 끝난 뒤 다시 눌러 주세요."; return; }
+  if (window.__WEB){ toClaude(q, t => { $("#hqSt").textContent = t; }); return; }
   $("#qbox").value = q; $("#qbox").dispatchEvent(new Event("input")); $("#hqQ").value = ""; $("#hqSt").textContent = "";
   showTab("ask"); window.scrollTo(0, 0); start();
 };

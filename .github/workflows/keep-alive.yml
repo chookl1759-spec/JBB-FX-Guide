@@ -1,0 +1,33 @@
+# Supabase 무료 플랜은 7일 동안 요청이 없으면 프로젝트를 일시 정지합니다.
+# 3일마다 가벼운 조회(SELECT id FROM jb_fx_reviews LIMIT 1)를 보내 정지를 막습니다.
+# 공개용 키(publishable key)는 원래 화면 코드에 들어가는 키라 여기 적어도 됩니다. secret key는 절대 넣지 마세요.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "37 0 */3 * *"   # 3일마다 09:37 (한국 시간)
+  workflow_dispatch: {}       # Actions 탭에서 수동 실행 가능
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://szsfqahpwmrofrjuldxb.supabase.co' }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_CJB7Dh_RRmNECFyyV46IMQ_oepa4dSi' }}
+    steps:
+      - name: Ping Supabase (SELECT id FROM jb_fx_reviews LIMIT 1)
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -sS -o body.json -w "%{http_code}" \
+              "$SUPABASE_URL/rest/v1/jb_fx_reviews?select=id&limit=1" \
+              -H "apikey: $SUPABASE_KEY" -H "Authorization: Bearer $SUPABASE_KEY") || code=000
+            echo "시도 $i: HTTP $code"; cat body.json 2>/dev/null; echo
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "::error::Supabase 응답이 200이 아닙니다. supabase_setup.sql 실행 여부와 프로젝트 일시정지 상태를 확인하세요."
+          exit 1
