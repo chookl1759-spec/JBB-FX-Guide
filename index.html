@@ -2,7 +2,15 @@
 <html lang="ko" data-theme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JB 환이">
+<meta name="theme-color" content="#173f9e">
+<link rel="apple-touch-icon" href="jb_hwani_app_icon.png">
+<link rel="icon" type="image/png" href="jb_hwani_app_icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <script>try{var t=localStorage.getItem("fxdesk.theme2");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
 <title>JB 환이 · 외환 AI 도우미</title>
@@ -2331,7 +2339,100 @@ table.dt td small{display:block}
 .web-acct button{background:none;border:1px solid var(--line);border-radius:7px;padding:3px 8px;font-size:11.5px;color:var(--sub)}
 .web-acct button:hover{color:var(--accent);border-color:var(--accent)}
 .banner a.btn{display:inline-block;margin:8px 0 0;text-decoration:none;color:#fff}
-.tb-user{display:inline-flex;align-items:center;gap:5px;margin-left:auto;margin-right:8px;font-size:13px;color:var(--ink);white-space:nowrap}.tb-user small{color:var(--sub);font-variant-numeric:tabular-nums}.tb-user.hidden{display:none}.tb-user + .busy-pill{margin-left:0}@media (max-width:520px){.tb-user small{display:none}}</style>
+.tb-user{display:inline-flex;align-items:center;gap:5px;margin-left:auto;margin-right:8px;font-size:13px;color:var(--ink);white-space:nowrap}.tb-user small{color:var(--sub);font-variant-numeric:tabular-nums}.tb-user.hidden{display:none}.tb-user + .busy-pill{margin-left:0}@media (max-width:520px){.tb-user small{display:none}}
+/* ===== 휴대폰 앱형 화면 (768px 이하) ===== */
+.m-only,.m-head,.m-tabbar,.m-quick,.m-seg{display:none}
+@media (max-width:768px){
+  html{-webkit-tap-highlight-color:transparent}
+  body{padding-bottom:calc(86px + env(safe-area-inset-bottom))}
+  .app{grid-template-columns:minmax(0,1fr)!important}
+  .side{display:none!important}
+  .m-only{display:block}
+  /* 상단 비서 머리말 */
+  .m-head{display:flex;align-items:center;gap:10px;position:relative;z-index:20;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:color-mix(in srgb,var(--bg) 82%,transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+  .m-avatar{flex:none;width:52px;height:52px;display:grid;place-items:center}
+  .m-avatar img,.m-avatar svg{width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 4px 8px rgba(23,63,158,.25));animation:mbob 3.2s ease-in-out infinite}
+  @keyframes mbob{50%{transform:translateY(-3px)}}
+  .m-bubble{position:relative;flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:9px 12px;font-size:14px;line-height:1.4;font-weight:600;color:var(--text);box-shadow:0 4px 14px rgba(17,24,64,.08);word-break:keep-all}
+  .m-bubble::before{content:"";position:absolute;left:-6px;top:50%;width:11px;height:11px;background:inherit;border-left:1px solid var(--line);border-bottom:1px solid var(--line);transform:translateY(-50%) rotate(45deg)}
+  .m-bubble small{display:block;font-weight:500;font-size:11.5px;color:var(--sub);margin-top:1px}
+  .m-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+  .m-theme{width:48px;height:48px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:18px;display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 8px rgba(17,24,64,.08)}
+  .m-badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+  .m-badge:empty{display:none}
+  /* 기존 상단 바는 숨기고, AI 진행 표시만 하단 탭 위에 띄웁니다 */
+  .topbar{position:fixed!important;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:40;padding:0!important;margin:0!important;max-width:none!important;width:auto!important;background:none!important;border:0!important;box-shadow:none!important;pointer-events:none}
+  .topbar > *:not(.busy-pill){display:none!important}
+  .topbar .busy-pill{pointer-events:auto;box-shadow:0 8px 24px rgba(17,24,64,.22)}
+  .main .wrap{padding:10px 14px 24px!important}
+  .main{overflow-x:clip;min-width:0}
+  .ticker{align-items:flex-start}
+  .tk-head{flex-direction:column!important;align-items:flex-start!important;gap:2px!important;min-width:0!important;flex:1 1 0!important}
+  .tk-head > span,.tk-lag{white-space:normal!important;word-break:keep-all;font-size:12px}
+  .tk-items{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .tk-more{min-height:40px!important;border-radius:999px!important;padding:0 14px!important}
+  .main > .wrap:not(.hidden){animation:mfade .24s ease-out}
+  @keyframes mfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  /* 알약 모양 바로가기 */
+  .m-quick{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;margin:0 -2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .m-quick::-webkit-scrollbar{display:none}
+  .m-quick button{flex:none;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text);font:inherit;font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;box-shadow:0 3px 10px rgba(17,24,64,.07);cursor:pointer;white-space:nowrap}
+  .m-quick button.pri{background:linear-gradient(135deg,#2a6fe0,#173f9e);color:#fff;border-color:transparent}
+  .m-quick button:active,.m-tabbar button:active,.m-sheet-grid button:active{transform:scale(.96)}
+  /* 서식·한도 전환 */
+  .m-seg{display:flex;gap:4px;padding:4px;margin:0 0 12px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line)}
+  .m-seg button{flex:1;min-height:44px;border:0;border-radius:999px;background:none;font:inherit;font-weight:700;color:var(--sub);cursor:pointer}
+  .m-seg button.on{background:var(--surface);color:var(--accent);box-shadow:0 2px 8px rgba(17,24,64,.1)}
+  /* 둥근 카드 */
+  .card,.panel,.result,.ticker,.tab-top,.hero,.party,.calc-grid > *,.rules-mini,.kpis > *,.adm-stats .st{border-radius:18px!important}
+  .card,.panel,.result,.ticker,.tab-top,.hero{box-shadow:0 6px 22px rgba(17,24,64,.07),0 1px 2px rgba(17,24,64,.05)!important;border:1px solid var(--line)!important}
+  .card-h{border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px}
+  .cockpit,.cockpit2{gap:12px!important}
+  .ctable-wrap,.btable-wrap{border:0!important;background:none!important;box-shadow:none!important;overflow:visible!important}
+  .ctable tr{background:var(--surface);border:1px solid var(--line)!important;border-radius:18px;margin:0 0 10px;padding:12px 14px!important;box-shadow:0 4px 14px rgba(17,24,64,.06)}
+  .ctable td{border:0!important}
+  table.ft{display:block;border:0!important;background:none!important}
+  table.ft tbody{display:block}
+  table.ft tr{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px 14px;margin:0 0 10px;box-shadow:0 4px 14px rgba(17,24,64,.06)}
+  table.ft tr:first-child{display:none}
+  table.ft td{border:0!important;padding:0!important}
+  table.ft td:nth-child(1),table.ft td:nth-child(2){font-size:12px;color:var(--sub);grid-column:1}
+  table.ft td:nth-child(3){grid-column:1;font-weight:600}
+  table.ft td:nth-child(4){grid-column:2;grid-row:1/span 3}
+  /* 손가락 터치: 최소 48px */
+  .btn,.chip,.qtag,.fchip,.type,.lnk,.tk-more,select,.field,textarea,input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]){min-height:48px}
+  .field,select,textarea,input{font-size:16px!important}
+  .main button:not(.busy-pill),.m-sheet button{min-height:48px!important;height:auto!important}
+  .main label:has(> input[type=checkbox]),.main label:has(> input[type=radio]){display:inline-flex;align-items:center;gap:8px;min-height:48px}
+  .btn,.fchip{border-radius:14px;padding-left:16px;padding-right:16px}
+  .lnk,.tk-more{display:inline-flex;align-items:center}
+  input[type=checkbox],input[type=radio]{width:22px;height:22px}
+  /* 하단 유리 탭 바 */
+  .m-tabbar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:50;padding:6px;border-radius:24px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(16px) saturate(1.6);backdrop-filter:blur(16px) saturate(1.6);border:1px solid rgba(255,255,255,.6);box-shadow:0 10px 30px rgba(17,24,64,.18)}
+  .m-tabbar button{min-height:58px!important;border:0;background:none;border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:inherit;font-size:11px;font-weight:700;color:#5b6684;cursor:pointer;transition:background-color .18s,color .18s,transform .12s}
+  .m-tabbar button i{font-style:normal;font-size:21px;line-height:1;transition:transform .2s}
+  .m-tabbar button.on{background:rgba(42,111,224,.12);color:#1f5fd6}
+  .m-tabbar button.on i{transform:translateY(-1px) scale(1.12)}
+  :root[data-theme="dark"] .m-tabbar{background:rgba(14,30,66,.72);border-color:rgba(120,170,230,.22)}
+  :root[data-theme="dark"] .m-tabbar button{color:#9fb6d8}
+  :root[data-theme="dark"] .m-tabbar button.on{background:rgba(79,179,245,.18);color:#bfe3ff}
+  :root[data-theme="dark"] .m-head{background:rgba(10,28,64,.78)}
+  /* 관리 시트 */
+  .m-sheet{position:fixed;inset:auto 0 0 0;margin:0;width:100%;max-width:none;max-height:85vh;border:0;border-radius:24px 24px 0 0;padding:10px 16px calc(18px + env(safe-area-inset-bottom));background:var(--surface);color:var(--text);box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+  .m-sheet[open]{animation:mup .26s ease-out}
+  @keyframes mup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+  .m-sheet::backdrop{background:rgba(8,16,40,.45);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+  .m-grab{width:40px;height:5px;border-radius:9px;background:var(--line);margin:0 auto 12px}
+  .m-acct{font-size:14px;color:var(--sub);margin:0 2px 12px}
+  .m-acct b{color:var(--text)}
+  .m-sheet-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .m-sheet-grid button{min-height:64px;border-radius:18px;border:1px solid var(--line);background:var(--surface-2);font:inherit;font-weight:700;color:var(--text);display:flex;align-items:center;gap:10px;padding:0 14px;text-align:left;cursor:pointer}
+  .m-sheet-grid button i{font-style:normal;font-size:22px}
+  .m-sheet-grid button.warn{color:var(--crit)}
+}
+@media (max-width:768px) and (prefers-reduced-motion:reduce){.m-avatar svg,.m-avatar img,.main > .wrap:not(.hidden),.m-sheet[open]{animation:none}}
+.f-zip{margin-left:auto}
+</style>
 <style id="sheetCss"></style>
 </head>
 <body>
@@ -2341,11 +2442,12 @@ table.dt td small{display:block}
 <label class="fl"><span>비밀번호</span><input class="field" name="password" type="password" required autocomplete="current-password"></label>
 <button class="btn" id="wlBtn" type="submit">로그인</button><p class="wl-st" id="wlSt" role="status"></p>
 <p class="wl-note">외환사업부 직원 전용입니다. 첫 로그인 후 왼쪽 아래 「비밀번호 변경」으로 꼭 바꿔 주세요.</p></form></div>
-<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>실무 Q&amp;A</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span id="webAcct">로그인 중…</span><span><button type="button" onclick="fxWebChangePw()">비밀번호 변경</button> <button type="button" onclick="fxWebLogout()">로그아웃</button></span></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><span class="tb-user hidden" id="webUser"></span><button type="button" class="busy-pill hidden" id="busyPill" data-nav="ask" title="진행 중인 화면으로 이동"><span class="spin" aria-hidden="true"></span><b id="busyL">AI 검토 중</b><em id="busyT"></em></button><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
+<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>실무 Q&amp;A</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span id="webAcct">로그인 중…</span><span><button type="button" onclick="fxWebChangePw()">비밀번호 변경</button> <button type="button" onclick="fxWebLogout()">로그아웃</button></span></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><div class="m-head" id="mHead"><div class="m-avatar"><img src="jb_hwani_mascot.png" alt="" onerror="this.replaceWith(document.getElementById('mMascotTpl').content.cloneNode(true))"></div><div class="m-bubble" id="mBubble">오늘 외환 실무를 도와드릴게요!<small>JB 환이 · 외환사업부</small></div><div class="m-right"><button type="button" class="m-theme" id="mTheme" aria-label="화면 밝기 전환">🌙</button><span class="m-badge" id="mBadge"></span></div></div><template id="mMascotTpl"><svg class="m-masc" viewBox="0 0 120 120" aria-hidden="true"><defs><radialGradient id="mgB" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="#7cc0ff"/><stop offset=".55" stop-color="#2a6fe0"/><stop offset="1" stop-color="#173f9e"/></radialGradient><radialGradient id="mgG" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#fff1b8"/><stop offset=".6" stop-color="#f6bf3a"/><stop offset="1" stop-color="#d48d0c"/></radialGradient></defs><ellipse cx="60" cy="110" rx="30" ry="5" fill="#0b1b4a" opacity=".16"/><path d="M60 22v-8" stroke="#173f9e" stroke-width="4" stroke-linecap="round"/><circle cx="60" cy="11" r="8" fill="url(#mgG)"/><text x="60" y="15" text-anchor="middle" font-size="10" font-weight="800" fill="#8a5a00" font-family="sans-serif">₩</text><circle cx="60" cy="64" r="44" fill="url(#mgB)"/><ellipse cx="44" cy="40" rx="15" ry="9" fill="#fff" opacity=".35" transform="rotate(-25 44 40)"/><ellipse cx="45" cy="58" rx="8" ry="10" fill="#fff"/><ellipse cx="75" cy="58" rx="8" ry="10" fill="#fff"/><circle cx="46.5" cy="60" r="5" fill="#0d1b3e"/><circle cx="76.5" cy="60" r="5" fill="#0d1b3e"/><circle cx="48.5" cy="57.5" r="1.8" fill="#fff"/><circle cx="78.5" cy="57.5" r="1.8" fill="#fff"/><ellipse cx="34" cy="72" rx="6" ry="3.6" fill="#ff8fb1" opacity=".7"/><ellipse cx="86" cy="72" rx="6" ry="3.6" fill="#ff8fb1" opacity=".7"/><path d="M53 72q7 6 14 0" fill="none" stroke="#0d1b3e" stroke-width="3" stroke-linecap="round"/><circle cx="60" cy="92" r="11" fill="url(#mgG)"/><path d="M54.5 89.5h9l-2.4-2.4M65.5 94.5h-9l2.4 2.4" fill="none" stroke="#8a5a00" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></template><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><span class="tb-user hidden" id="webUser"></span><button type="button" class="busy-pill hidden" id="busyPill" data-nav="ask" title="진행 중인 화면으로 이동"><span class="spin" aria-hidden="true"></span><b id="busyL">AI 검토 중</b><em id="busyT"></em></button><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
 <dialog id="claudeDlg" style="max-width:520px"><div class="d-hd"><b>Claude AI 연결</b><button class="btn ghost sm" id="claudeX" type="button">닫기</button></div><div class="d-bd" id="claudeB"></div></dialog>
 
 
 <div class="wrap single" id="tab-home">
+  <div class="m-quick" aria-label="바로가기"><button type="button" class="pri" data-mq="new">🔍 신규 거래 검토</button><button type="button" data-mq="fx">💱 오늘의 고시환율</button><button type="button" data-mq="zip">📁 서식 일괄 다운</button><button type="button" data-mq="calc">🧮 한도 계산</button><button type="button" data-mq="cases">📋 검토 내역</button></div>
   <div class="ticker" aria-label="오늘의 고시환율">
     <div class="tk-head"><div class="tk-t"><b>고시환율</b><span class="tk-date" id="homeFxDate">-</span></div><span id="homeFxSrc">서울외국환중개 최초고시 매매기준율</span></div>
     <div class="tk-items" id="homeFx"><span class="hint">불러오는 중…</span></div>
@@ -2469,7 +2571,7 @@ table.dt td small{display:block}
   <div class="clist" id="clist"><p class="hint">불러오는 중…</p></div>
 </section></div>
 
-<div class="wrap single hidden" id="tab-calc"><div class="calc-grid">
+<div class="wrap single hidden" id="tab-calc"><div class="m-seg" role="tablist"><button type="button" data-mseg="forms">📁 서식함</button><button type="button" data-mseg="calc">🧮 한도 계산</button></div><div class="calc-grid">
   <section class="panel">
     <h2>한도·누계 점검</h2>
     <p class="hint" style="margin-top:0">금액을 서울외국환중개 고시 매매기준율(재정된 매매기준율)로 미화 환산해 외국환거래규정의 기준금액과 비교합니다. 거래마다 그 거래일의 고시율을 씁니다.</p>
@@ -2515,10 +2617,10 @@ table.dt td small{display:block}
 <div class="row" style="gap:8px;margin-top:10px"><button class="btn" id="bStart" type="button">일괄 AI 검토 시작</button><button class="btn ghost" id="bStop" type="button" disabled>중지</button></div>
 <div class="status" id="bSt" role="status" style="margin-top:8px"></div><ol class="b-list" id="bLog"></ol></section></div>
 
-<div class="wrap single hidden" id="tab-forms"><section class="panel">
+<div class="wrap single hidden" id="tab-forms"><div class="m-seg" role="tablist"><button type="button" data-mseg="forms">📁 서식함</button><button type="button" data-mseg="calc">🧮 한도 계산</button></div><section class="panel">
   <h2>서식함</h2>
   <p class="hint">외국환거래규정·외국인투자 촉진법 시행규칙 서식은 한글(HWP) 원본 파일이라 고객에게 그대로 전달하고 한글에서 바로 작성·수정할 수 있습니다. 취급지침 서식은 PDF입니다. 외국환거래업무취급지침 서식(2026.1.28 현재), 외국환거래규정 별지 서식(재정경제부고시 제2026-110호), 외국인투자 촉진법 시행규칙 별지 서식(산업통상부령 제25호)을 함께 모았습니다.</p>
-  <div class="row" style="margin-bottom:8px"><select class="field" id="fgrp" aria-label="서식 구분"><option value="">전체 서식</option><option value="지침">외국환거래업무취급지침 서식</option><option value="규정">외국환거래규정 별지 서식</option><option value="외투">외국인투자 촉진법 시행규칙 서식</option></select></div>
+  <div class="row" style="margin-bottom:8px"><select class="field" id="fgrp" aria-label="서식 구분"><option value="">전체 서식</option><option value="지침">외국환거래업무취급지침 서식</option><option value="규정">외국환거래규정 별지 서식</option><option value="외투">외국인투자 촉진법 시행규칙 서식</option></select><button class="btn ghost f-zip" id="fZip" type="button">목록 서식 한꺼번에 받기 (압축 파일)</button></div>
   <input class="field" id="fq" placeholder="서식 검색 (예: 해외부동산, 7-13, 사업계획서)" style="width:100%">
   <table class="ft" id="ftable"></table><div class="status" id="fstatus" role="status"></div>
 </section></div>
@@ -2536,7 +2638,25 @@ table.dt td small{display:block}
   <p class="hint">매일 아침 국가법령정보센터 현행 버전을 자동 점검합니다. 조문 원문 전체는 새 PDF를 받아 갱신합니다.</p>
 </section></div>
 
-</main></div>
+</main><nav class="m-tabbar" id="mTabbar" aria-label="하단 메뉴">
+<button type="button" data-m="home"><i aria-hidden="true">🏠</i><span>홈</span></button>
+<button type="button" data-m="ask"><i aria-hidden="true">🔍</i><span>AI 검토</span></button>
+<button type="button" data-m="chat"><i aria-hidden="true">💬</i><span>실무 Q&amp;A</span></button>
+<button type="button" data-m="forms"><i aria-hidden="true">📁</i><span>서식·한도</span></button>
+<button type="button" data-m="more"><i aria-hidden="true">⚙️</i><span>관리</span></button>
+</nav>
+<dialog class="m-sheet" id="mSheet" aria-label="관리 메뉴"><div class="m-grab"></div><p class="m-acct" id="mAcct"></p>
+<div class="m-sheet-grid">
+<button type="button" data-ms="cases"><i aria-hidden="true">📋</i>검토 내역</button>
+<button type="button" data-ms="src"><i aria-hidden="true">🔎</i>원문 검색</button>
+<button type="button" data-ms="info"><i aria-hidden="true">📚</i>기준 법령</button>
+<button type="button" data-ms="calc"><i aria-hidden="true">🧮</i>한도 계산</button>
+<button type="button" data-ms="admin" class="hidden" id="mAdm"><i aria-hidden="true">👥</i>이용자 관리</button>
+<button type="button" data-ms="claude"><i aria-hidden="true">🤖</i>Claude AI 연결</button>
+<button type="button" data-ms="pw"><i aria-hidden="true">🔑</i>비밀번호 변경</button>
+<button type="button" data-ms="logout" class="warn"><i aria-hidden="true">🚪</i>로그아웃</button>
+</div></dialog>
+</div>
 
 <dialog id="dlg"><div class="d-hd"><b id="dlgT"></b><button class="btn ghost sm" id="dlgX">닫기</button></div><div class="d-bd"><div id="dlgB" class="lawtxt"></div></div></dialog>
 
@@ -2905,13 +3025,16 @@ async function formBlob(f, r){
   for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
   return new Blob([u], { type:"application/x-hwp" });
 }
+function formFileName(f, no){
+  return `${f.grp ? (f.grp === "규정" ? "외국환거래규정_" : "외투법시행규칙_") + f.label.replace(/[\s()]+/g, "") : "지침서식_제" + no + "호"}_${f.title.replace(/[\\/:*?"<>|()]/g,"").replace(/\s+/g,"_").slice(0, 60)}.${f.fmt === "hwp" ? "hwp" : "pdf"}`;
+}
 async function getForm(no, btn){
   const f = FORM_BY[no]; if (!f) return;
   const say = t => { $("#fstatus").textContent = t; setStatus(t); };
   try {
     if (btn) btn.disabled = true; toast("서식 파일을 준비하고 있습니다…", 4000);
     const r = await fetch(f.file); if (!r.ok) throw 0;
-    const name = `${f.grp ? (f.grp === "규정" ? "외국환거래규정_" : "외투법시행규칙_") + f.label.replace(/[\s()]+/g, "") : "지침서식_제" + no + "호"}_${f.title.replace(/[\\/:*?"<>|()]/g,"").replace(/\s+/g,"_").slice(0, 60)}.${f.fmt === "hwp" ? "hwp" : "pdf"}`;
+    const name = formFileName(f, no);
     let blob = await formBlob(f, r), fname = name;
     if (f.fmt === "hwp" && !window.__WEB){ const Z = await loadZip(); const z = new Z(); z.file(name, blob); blob = await z.generateAsync({ type:"blob" }); fname = name.replace(/\.hwp$/, ".zip"); }
     await saveFile(fname, blob, t => say(`${f.grp ? FGRP[f.grp] + " " + f.label : "서식 제" + no + "호"}: ${t}`));
@@ -2927,7 +3050,27 @@ function renderForms(){
   const list = ALLFORMS.filter(f => !f.alias && (!g || f.grp === g) && (!q || (FGRP[f.grp] + " " + f.label + " " + f.title + " " + f.key).includes(q)));
   $("#ftable").innerHTML = `<tr><th>구분</th><th>서식 번호</th><th>서식명</th><th style="text-align:right">파일</th></tr>` + list.map(f => `<tr><td>${FGRP[f.grp]}</td><td>${esc(f.label)}</td><td>${esc(f.title)}${f.pages > 1 ? ` <span class="hint">(${f.pages}쪽)</span>` : ""}${f.note ? ` <span class="hint">· ${esc(f.note)}</span>` : ""}</td><td style="text-align:right;white-space:nowrap"><span class="fmt ${f.fmt === "hwp" ? "hwp" : ""}">${f.fmt === "hwp" ? "한글" : "PDF"}</span><button class="fchip" data-form="${esc(f.key)}">받기</button></td></tr>`).join("");
   $("#fstatus").textContent = `${list.length}종`;
+  FORM_LIST = list;
 }
+let FORM_LIST = [];
+async function zipForms(){
+  const btn = $("#fZip"), list = FORM_LIST.slice(), say = t => { $("#fstatus").textContent = t; setStatus(t); };
+  if (!list.length) { say("받을 서식이 없습니다."); return; }
+  if (list.length > 20 && !confirm(`서식 ${list.length}종을 압축 파일 하나로 받습니다. 휴대폰 데이터로는 수십 MB가 쓰일 수 있습니다. 계속할까요?`)) return;
+  btn.disabled = true;
+  try {
+    const Z = await loadZip(), z = new Z(); let n = 0, miss = 0;
+    for (const f of list) {
+      say(`서식 준비 중… ${n + 1} / ${list.length}`);
+      try { const r = await fetch(f.file); if (!r.ok) throw 0; z.file(formFileName(f, f.key), await formBlob(f, r)); } catch { miss++; }
+      n++;
+    }
+    const blob = await z.generateAsync({ type:"blob" });
+    await saveFile(`JB환이_서식_${list.length - miss}종_${TODAY.replace(/-/g, "")}.zip`, blob, t => say(t + (miss ? ` (불러오지 못한 서식 ${miss}종 제외)` : "")));
+  } catch { say("압축 파일을 만들지 못했습니다. 잠시 후 다시 시도하세요."); }
+  finally { btn.disabled = false; }
+}
+$("#fZip").addEventListener("click", zipForms);
 $("#fq").addEventListener("input", renderForms); $("#fgrp").addEventListener("change", renderForms); renderForms();
 
 /* ---------- 원문 검색 ---------- */
@@ -4762,6 +4905,53 @@ document.addEventListener("click", e => {
 })();
 
 
+
+/* ---------- 휴대폰 앱형 화면 ---------- */
+(function(){
+  const sheet = $("#mSheet"), MOB = window.matchMedia("(max-width:768px)");
+  const _show = showTab;
+  showTab = function(k){ _show(k); mSync(); if (MOB.matches) window.scrollTo({ top:0, behavior:"instant" in window ? "instant" : "auto" }); };
+  function cur(){ const t = TABS.find(t => !$("#tab-" + t).classList.contains("hidden")); return t || "home"; }
+  function mSync(){
+    const k = cur(), grp = k === "home" || k === "ask" || k === "chat" ? k : (k === "forms" || k === "calc") ? "forms" : "more";
+    document.querySelectorAll("#mTabbar button").forEach(b => b.classList.toggle("on", b.dataset.m === grp));
+    document.querySelectorAll("[data-mseg]").forEach(b => b.classList.toggle("on", b.dataset.mseg === k));
+  }
+  window.mSync = mSync;
+  function given(n){ n = String(n || "").replace(/\s+(대리|과장|차장|부장|주임|계장|팀장|행원)$/, ""); return /^[가-힣]{3}$/.test(n) ? n.slice(1) : n; }
+  function me(){
+    const m = window.FX_ME || {}, nm = given(m.name);
+    $("#mBubble").innerHTML = `${nm ? esc(nm) + "님, " : ""}오늘 외환 실무를 도와드릴게요!<small>JB 환이 · 외환사업부</small>`;
+    $("#mBadge").textContent = m.empno ? "행번 " + m.empno : "";
+    $("#mAcct").innerHTML = m.name ? `<b>${esc(m.name)}</b>${m.empno ? " · 행번 " + esc(m.empno) : ""}` : "로그인 정보를 불러오는 중…";
+    $("#mAdm").classList.toggle("hidden", !window.__owner);
+  }
+  let tries = 0; const iv = setInterval(() => { me(); if ((window.FX_ME && window.FX_ME.name && window.__owner !== undefined) || ++tries > 40) clearInterval(iv); }, 500);
+  me(); mSync();
+  const th = $("#mTheme"), thSync = () => { th.textContent = document.documentElement.dataset.theme === "dark" ? "☀️" : "🌙"; };
+  th.onclick = () => { const b = document.getElementById("themeBtn"); if (b) b.click(); thSync(); };
+  new MutationObserver(thSync).observe(document.documentElement, { attributes:true, attributeFilter:["data-theme"] }); thSync();
+  document.querySelectorAll("#mTabbar button").forEach(b => b.onclick = () => {
+    if (b.dataset.m === "more") { me(); if (sheet.showModal) sheet.showModal(); else sheet.setAttribute("open", ""); return; }
+    showTab(b.dataset.m === "forms" && cur() === "calc" ? "calc" : b.dataset.m);
+  });
+  document.querySelectorAll("[data-mseg]").forEach(b => b.onclick = () => showTab(b.dataset.mseg));
+  sheet.addEventListener("click", e => {
+    if (e.target === sheet) { sheet.close(); return; }
+    const b = e.target.closest("[data-ms]"); if (!b) return; const a = b.dataset.ms; sheet.close();
+    if (a === "claude") $("#claudeBtn").click();
+    else if (a === "pw") window.fxWebChangePw && fxWebChangePw();
+    else if (a === "logout") window.fxWebLogout && fxWebLogout();
+    else showTab(a);
+  });
+  document.querySelectorAll("[data-mq]").forEach(b => b.onclick = () => {
+    const a = b.dataset.mq;
+    if (a === "new") { showTab("ask"); const n = $("#newBtn"); if (n) n.click(); setTimeout(() => { const q = $("#qbox"); if (q) q.focus({ preventScroll:true }); }, 120); }
+    else if (a === "fx") showTab("calc");
+    else if (a === "zip") { showTab("forms"); const z = $("#fZip"); z.scrollIntoView({ block:"center" }); z.focus({ preventScroll:true }); toast("검색·구분으로 목록을 줄인 뒤 「한꺼번에 받기」를 누르면 그 서식만 압축 파일로 받습니다."); }
+    else showTab(a);
+  });
+})();
 /* ---------- 화면 밝기 ---------- */
 (function(){
   const b = document.getElementById("themeBtn"); if (!b) return;
