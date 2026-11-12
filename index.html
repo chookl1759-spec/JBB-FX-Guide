@@ -2823,7 +2823,7 @@ body{padding-bottom:34px}
   <p class="hint">매일 아침 국가법령정보센터 현행 버전을 자동 점검합니다. 조문 원문 전체는 새 PDF를 받아 갱신합니다.</p>
 </section></div>
 
-</main><div class="fx-disclaimer" role="note">본 도구는 외환 실무 업무 지원용 보조 도구이며, 최종 거래 승인 및 법적 신고 책임은 담당 행원에게 있습니다.</div>
+</main><div class="fx-disclaimer" role="note">JB 환이는 외환 실무 보조 도구입니다.</div>
 <nav class="m-tabbar" id="mTabbar" aria-label="하단 메뉴">
 <button type="button" data-m="home"><i aria-hidden="true">🏠</i><span>홈</span></button>
 <button type="button" data-m="ask"><i aria-hidden="true">🔍</i><span>AI 검토</span></button>
@@ -3448,11 +3448,6 @@ function fxDecorate(box, t, q, text){
 function fxAfterLift(box){
   const s = box.querySelector(".lj-sum"), v = splitVerdict(box.dataset.fba || "").v || {}, tag = (box.querySelector(".tag") || {}).textContent || "";
   if (s && needHQ(v, tag) && !s.querySelector(".hq-badge")) s.insertAdjacentHTML("afterbegin", '<div class="hq-badge" role="alert">⚠️ 외환사업부 본점 최종 승인 필요 건</div>');
-  const tip = (window.TERMTIPS || {})[box.dataset.tk];
-  if (tip && (tip.screen || tip.bok || tip.doc) && !box.querySelector(".tt-badge")){
-    const html = `<div class="tt-badge"><b>🖥 단말 입력 팁</b>${tip.screen ? `<span>거래화면 ${esc(tip.screen)}</span>` : ""}${tip.bok ? `<span>BOK 사유코드 ${esc(tip.bok)}</span>` : ""}${tip.doc ? `<span>증빙코드 ${esc(tip.doc)}</span>` : ""}</div>`;
-    const acc = box.querySelector(".lj-acc"); if (acc) acc.insertAdjacentHTML("beforebegin", html); else if (s) s.insertAdjacentHTML("afterend", html);
-  }
   if (!box.querySelector(":scope > .fb-row")) box.insertAdjacentHTML("beforeend", '<div class="fb-row"><button type="button" class="fb-btn" data-fb-box>💬 피드백 / 오류 제보</button></div>');
 }
 function liftSummary(box, text){
@@ -5807,9 +5802,8 @@ document.addEventListener("click", e => {
   if (c){ const i = +c.dataset.fbChat, m = CHAT[i]; let q = ""; for (let j = i - 1; j >= 0; j--) if (CHAT[j].role === "user"){ q = CHAT[j].text; break; } return fbOpen(q, m ? m.text : ""); }
 });
 
-/* ---------- 관리자: 직원 피드백 & AI 일괄 개선, 단말 입력 팁 ---------- */
+/* ---------- 관리자: 직원 피드백 & AI 일괄 개선 ---------- */
 let FB_ROWS = [];
-window.TERMTIPS = {};
 const kstFull = iso => { const d = new Date(iso); return isNaN(d) ? "" : new Date(d.getTime() + 9 * 3600e3).toISOString().replace("T", " ").slice(0, 19); };
 function fbPrompt(rows){
   return "[직원 실무 피드백 기반 외환 Q&A 엔진 자동 업데이트 요청]\n외환사업부 직원들이 파일럿 중 제보한 다음 실무 정정 사항을 지식베이스에 즉시 반영해 주세요:\n"
@@ -5828,11 +5822,7 @@ function admExtras(){
   const tab = $("#tab-admin"); if (!tab || $("#fbSec")) return;
   tab.insertAdjacentHTML("beforeend", `<section class="panel" id="fbSec" style="margin-top:14px"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">📬 직원 피드백 & AI 일괄 개선</h2><div class="row"><button class="btn" type="button" id="fbPromptBtn">📋 Claude 자동 수정용 프롬프트 생성/복사</button><button class="btn ghost" type="button" id="fbReload">새로고침</button></div></div>
     <p class="hint">직원들이 답변 아래 「피드백 / 오류 제보」로 보낸 내용입니다. 프롬프트를 복사해 Claude에 붙여 넣으면 판정 기준과 지식베이스 수정을 요청할 수 있습니다. 반영을 마친 건은 「처리 완료」로 지우세요.</p>
-    <div class="status" id="fbSt"></div><textarea class="field hidden" id="fbPromptOut" rows="8" style="width:100%;margin:8px 0" readonly></textarea><div id="fbList"></div></section>
-    <section class="panel" id="ttSec" style="margin-top:14px"><h2 style="margin:0 0 6px">🖥 단말 입력 팁 관리</h2>
-    <p class="hint">거래화면 번호·BOK 사유코드·증빙코드는 우리 은행 계정계와 한국은행 외환통계 분류표 기준이라 사이트가 임의로 채우지 않습니다. 여기에 등록한 유형만 AI 검토 결과 아래에 한 줄 뱃지로 표시됩니다.</p>
-    <table class="tt-tbl"><thead><tr><th>거래유형</th><th>거래화면 번호</th><th>BOK 사유코드</th><th>증빙코드</th></tr></thead><tbody>${TYPES.filter(t => t.g && !t.grp).map(t => `<tr data-tt="${t.k}"><th>${esc(t.n.replace(/^.*?· /, ""))}<div class="hint">${esc(GN[t.g] || "")}</div></th><td><input class="field" data-f="screen" maxlength="30"></td><td><input class="field" data-f="bok" maxlength="30"></td><td><input class="field" data-f="doc" maxlength="30"></td></tr>`).join("")}</tbody></table>
-    <div class="row" style="margin-top:10px"><button class="btn" type="button" id="ttSave">단말 팁 저장</button><span class="status" id="ttSt"></span></div></section>`);
+    <div class="status" id="fbSt"></div><textarea class="field hidden" id="fbPromptOut" rows="8" style="width:100%;margin:8px 0" readonly></textarea><div id="fbList"></div></section>`);
   $("#fbReload").onclick = fbLoad;
   $("#fbPromptBtn").onclick = async () => {
     if (!FB_ROWS.length) await fbLoad();
@@ -5845,17 +5835,10 @@ function admExtras(){
     const del = e.target.closest("[data-fbdel]"); if (!del || !confirm("이 피드백을 처리 완료로 삭제할까요?")) return;
     try { const r = await fxSb().from("fx_feedback").delete().eq("id", del.dataset.fbdel); if (r.error) throw r.error; fbLoad(); } catch { toast("삭제하지 못했습니다."); }
   });
-  const fill = () => document.querySelectorAll("#ttSec [data-tt]").forEach(tr => { const v = TERMTIPS[tr.dataset.tt] || {}; tr.querySelectorAll("[data-f]").forEach(i => { if (document.activeElement !== i) i.value = v[i.dataset.f] || ""; }); });
-  fill(); window.__ttFill = fill;
-  $("#ttSave").onclick = async () => {
-    const o = {}; document.querySelectorAll("#ttSec [data-tt]").forEach(tr => { const v = {}; tr.querySelectorAll("[data-f]").forEach(i => { const s = i.value.trim(); if (s) v[i.dataset.f] = s; }); if (Object.keys(v).length) o[tr.dataset.tt] = v; });
-    try { const d = await claude.use("db"); await d.doc("settings/termtips").set({ tips:o, at:new Date().toISOString() }); $("#ttSt").textContent = "저장했습니다. 모든 직원의 검토 결과에 표시됩니다."; } catch { $("#ttSt").textContent = "저장하지 못했습니다."; }
-  };
   fbLoad();
 }
 (async () => {
   for (let i = 0; i < 60 && window.__owner === undefined; i++) await new Promise(r => setTimeout(r, 250));
-  try { const d = await claude.use("db"); d.doc("settings/termtips").onSnapshot(s => { const v = s.exists && s.data(); window.TERMTIPS = (v && v.tips) || {}; if (window.__ttFill) __ttFill(); }, () => {}); } catch {}
   if (window.__owner) admExtras();
 })();
 /* ---------- 화면 밝기 ---------- */
