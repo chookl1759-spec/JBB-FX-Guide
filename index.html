@@ -3311,18 +3311,47 @@ $("#stopBtn").onclick = () => ctl && ctl.abort();
 $("#askBtn").onclick = () => start();
 $("#qbox").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) start(); });
 
+/* ---------- 송금 목적 선택 (내장 판정 엔진) ---------- */
+const PURPOSES = [["out_trade","📦 수입대금 (인보이스·B/L)"],["out_gen","🎁 증여·생활비 (증빙 없음)"],["out_travel","🎓 유학·체재비"],["out_service","🧾 용역대가·수수료"],["out_frgn","👷 외국인 급여 송금"],["out_emig","✈️ 해외이주비·재산반출"],["out_odi","🏭 해외직접투자"],["out_re","🏠 해외부동산"],["out_gen","❔ 잘 모르겠음 (일반 송금)"]];
+function purposePick(q, facts0, masked, ctx){
+  $("#qbox").value = ""; piiCheck();
+  const box = document.createElement("article"); box.className = "result";
+  box.innerHTML = `<div class="r-head"><span class="tag">해외 당발송금 · 목적 확인</span><div class="r-q">${esc(q)}</div>${facts0 ? `<div class="r-facts">${esc(facts0)}</div>` : ""}</div><div class="clar"><div class="ql">송금 목적을 골라 주세요</div><div class="hint">목적에 따라 신고 여부와 필요 서류가 달라집니다.</div><div class="chips pp-chips">` + PURPOSES.map(([k, l]) => `<button class="chip" type="button" data-pp="${k}">${esc(l)}</button>`).join("") + `</div></div>`;
+  $("#thread").prepend(box); box.scrollIntoView({ behavior:"smooth", block:"start" });
+  box.addEventListener("click", e => { const b = e.target.closest("[data-pp]"); if (!b) return; const t = TYPES.find(x => x.k === b.dataset.pp); box.remove(); ask(t, q, facts0, { auto:true, note:masked, ctx }); });
+}
+
 /* ---------- 1단계: 빠진 사실관계 확인 ---------- */
 const BLOCK = ["not_granted","sampling_disabled","not_declared","capability_disabled"];
 let lastType = null, busy = false;
 function triageList(){ return curType.grp ? TYPES.filter(t => t.g === curType.k && !t.grp) : TYPES.filter(t => t.g && !t.grp); }
+// 자동 분류: 무역 거래 키워드를 먼저 보고, '해외·송금·지급'처럼 어디에나 나오는 말은 점수에서 뺍니다
+const GT_STOP = new Set(["해외", "외국", "지급", "송금", "거주자", "대금", "신고", "확인", "서류", "외화", "수령"]);
+const GT_PRIO = [
+  { k:"out_trade", re:/인보이스|invoice|물품\s*대금|무역|L\s*\/\s*C|엘씨|신용장|B\s*\/\s*L|선하증권|선적|상업\s*송장|송장|오퍼\s*시트|offer\s*sheet|purchase\s*order|통관|수입\s*(대금|물품|신고|거래|결제|업체|품|하는|한|할)|물품을?\s*수입|수입신고필증/i },
+  { k:"in_trade", re:/수출\s*(대금|물품|거래|신고)|수출대금|선수금\s*(을|를)?\s*(받|수령)/ },
+  { k:"out_re", re:/부동산|주택|아파트|콘도|토지|건물|빌라|임차\s*보증금/ },
+  { k:"out_emig", re:/이주비|해외\s*이주|재외동포|재산\s*반출/ },
+  { k:"out_odi", re:/현지\s*법인|해외\s*직접\s*투자|해외\s*지사|지분\s*(취득|투자)|증액\s*투자/ },
+  { k:"out_frgn", re:/외국인.{0,12}(급여|월급|임금|보수|퇴직|월급|소득)|(급여|월급|임금|퇴직금).{0,12}외국인|비거주자.{0,8}(송금|지급)/ },
+  { k:"out_travel", re:/유학|어학\s*연수|재학|등록금|학비|해외\s*체재|파견|주재원|해외\s*연수/ },
+  { k:"out_service", re:/용역|수수료|로열티|컨설팅|라이선스|라이센스|광고비|소프트웨어\s*(대금|사용료)/ },
+];
+const GT_RE_NEED = /부동산|주택|아파트|콘도|토지|건물|빌라|임차/;
+function gtPrio(q, list){ for (const p of GT_PRIO){ const t = p.re.test(q) && list.find(x => x.k === p.k); if (t) return t; } return null; }
 function guessType(q, list){
+  list = list || TYPES.filter(x => x.g && !x.grp);
+  guessType.score = 0; guessType.prio = false;
+  const p = gtPrio(q, list); if (p){ guessType.score = 9; guessType.prio = true; return p; }
   let best = null, bs = 0;
-  for (const t of (list || TYPES.filter(x => x.g && !x.grp))){
+  for (const t of list){
     if (!t.kw) continue; let s = 0;
-    for (const w of t.kw.split(/\s+/)) if (w.length >= 2 && q.includes(w)) s += Math.min(w.length, 4);
+    for (const w of t.kw.split(/\s+/)) if (w.length >= 2 && !GT_STOP.has(w) && q.includes(w)) s += Math.min(w.length, 4);
+    if (t.k === "out_re" && !GT_RE_NEED.test(q)) s = 0;
     if (s > bs){ bs = s; best = t; }
   }
-  return best || (list && list[0]) || TYPES.find(t => t.k === "etc");
+  guessType.score = bs;
+  return best || list.find(x => x.k === "out_gen") || list[0] || TYPES.find(t => t.k === "etc");
 }
 async function start(){
   const raw = $("#qbox").value.trim();
@@ -3340,7 +3369,8 @@ async function start(){
   catch (e) { if (BLOCK.includes(e && e.code)){ setStatus(fail(e)); progDone(); $("#askBtn").disabled = blocked; return; } }
   $("#askBtn").disabled = blocked;
   let t = curType, auto = false;
-  if (t.k === "auto" || t.grp){ auto = true; const L = triageList(); t = (tri && L.find(x => x.k === tri.type)) || guessType(q, L); }
+  if (t.k === "auto" || t.grp){ auto = true; const L = triageList(); t = (tri && L.find(x => x.k === tri.type)) || guessType(q, L);
+    if (window.__LOCAL && t.g === "out" && guessType.score === 0){ progDone(); setStatus(masked); return purposePick(q, facts0, masked, ctx); } }
   const qs = (tri && tri.need_more && Array.isArray(tri.questions)) ? tri.questions.filter(x => x && x.label).slice(0, 4) : [];
   if (!qs.length) return ask(t, q, facts0, { auto, note: masked, ctx });
   progDone(); setStatus(masked); $("#qbox").value = ""; piiCheck();
@@ -5310,12 +5340,12 @@ window.__LOCAL = true;
   const _route = q => LONG(q) ? RULE.long : /은행을\s*(통하지|거치지)\s*않|은행\s*없이|직접\s*(현금|현찰)으로\s*(지급|전달|주)/.test(q) ? RULE.nobank : null;
   RULE.out_trade = (q, x) => (_route(q) || RULE.out_trade0)(q, x);
   RULE.in_trade = (q, x) => (_route(q) || RULE.in_trade0)(q, x);
-  RULE.out_trade0 = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "수입신고필증이나 계약서·송장 같은 증빙서류를 내시면 신고 없이 수입대금을 보낼 수 있습니다."),
-    concl:"수입대금 지급은 지급등의 증빙서류(수입신고필증, 계약서·송장 등)를 내고 은행 확인을 받아 지급합니다(신고 불요). 제3자 지급이나 상계 같은 방법을 쓰면 별도 신고 여부를 확인해야 합니다.",
+  RULE.out_trade0 = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "물품 수입대금은 신고가 필요 없고, 상업송장(Invoice)과 운송서류(B/L) 또는 수입신고필증을 내시면 바로 보낼 수 있습니다."),
+    concl:"대외무역법에 따른 물품 수입대금 지급은 외국환거래법상 신고가 필요 없는 정상적인 경상지급입니다. 상업송장(Invoice)과 운송서류(B/L) 또는 수입신고필증으로 거래 내용과 금액을 확인한 뒤 지급합니다. 수출입대금 지급은 금액과 관계없이 관세청 통보 대상입니다. 제3자 지급·상계나 1년을 넘는 선지급처럼 결제 방법이 특이하면 별도 신고 여부를 확인하세요.",
     basis:["지급등을 하려는 자는 지급 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "선적서류나 물품 수령 후 지급하는 경우 통관방식은 수입신고필증으로, 무통관방식은 계약서·송장 등으로 내용을 확인합니다 [지침 p.52]."],
     steps:["통관 여부를 확인해 수입신고필증 또는 계약서·송장을 받습니다.", "수취인이 계약 상대방인지(제3자 지급 아닌지) 확인합니다.", "지급신청서를 받아 송금합니다."],
-    docs:[APP, "수입신고필증 (통관방식)", "계약서·송장·Offer sheet·Purchase order 등 지급등의 증빙서류", "운송 관련 증빙서류 (B/L 등, 필요시)"], forms:["[서식 제3-1호]"], ids:["규정 제4-2조", "지침 p.52"],
-    cautions:["계약 건당 미화 10만불을 넘는 수입대금은 지급방법(제5장) 확인이 필요합니다 [지침 p.52].", "전년도 수입실적 미화 3천만불 이상 기업의 송금방식 수입대금은 증빙서류 제출이 면제되고 5년간 보관합니다 [규정 제4-3조]."] });
+    docs:[APP, "상업송장 (Commercial Invoice)", "운송서류 (B/L·AWB) 또는 수입신고필증 (통관방식은 수입신고필증으로 확인)", "계약서·Offer sheet·Purchase order (송장만으로 거래 내용을 확인하기 어려울 때)"], forms:["[서식 제3-1호]"], ids:["규정 제4-2조", "지침 p.52", "규정 제4-8조"],
+    cautions:["수출입대금의 지급은 금액과 관계없이 매월 관세청장에게 통보되는 대상이고, 건당 미화 1만불을 넘는 지급은 국세청장 통보 대상입니다 [규정 제4-8조].", "수취인이 계약 상대방(수출자)과 다르면 제3자 지급 신고 여부를 확인하세요 [규정 제5-10조].", "계약 건당 미화 10만불을 넘는 수입대금은 지급방법(제5장) 확인이 필요합니다 [지침 p.52].", "전년도 수입실적 미화 3천만불 이상 기업의 송금방식 수입대금은 증빙서류 제출이 면제되고 5년간 보관합니다 [규정 제4-3조]."] });
   RULE.out_service = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "계약서와 청구서 같은 증빙서류를 내시면 신고 없이 보낼 수 있습니다."),
     concl:"용역대가·수수료·로열티 등 경상거래 대가는 지급등의 증빙서류(계약서, 대금청구서 등)를 내고 은행 확인을 받아 지급합니다(신고 불요). 연간 누계 10만불 이내면 증빙 없이 보낼 수도 있습니다.",
     basis:["지급등을 하려는 자는 지급 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "신고가 필요 없는 거래로 연간 누계 미화 10만불 이내이면 증빙서류 없이 지급할 수 있습니다 [규정 제4-3조]."],
