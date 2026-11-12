@@ -62,6 +62,12 @@
           else if (/@/.test(id)) email = id;   // 기존 이메일 계정도 그대로 로그인
           else { st.textContent = "행번 6자리를 입력해 주세요. (예: 219094)"; btn.disabled = false; return; }
           var r = await client().auth.signInWithPassword({ email: email, password: f.password.value });
+          if (r.error && /^\d{6}$/.test(id) && f.password.value === "wjsqnr1%" && /Invalid login/i.test(r.error.message || "")){
+            st.textContent = "처음 접속하는 사번을 등록하고 있습니다…";
+            var g = await client().rpc("fx_signup", { p_empno: id });
+            if (g.error){ st.textContent = "처음 접속하는 사번 자동 등록이 아직 준비되지 않았습니다. 외환사업부에 문의해 주세요."; btn.disabled = false; return; }
+            if (g.data === true) r = await client().auth.signInWithPassword({ email: email, password: f.password.value });
+          }
           if (r.error) throw r.error;
           try { localStorage.setItem("fxweb.empno", id); } catch(e){}
           f.password.value = ""; w.classList.add("hidden"); st.textContent = ""; resolve(r.data.session);
@@ -2506,13 +2512,13 @@ table.dt td small{display:block}
 .lj-limit > b{display:block;color:var(--accent);margin-bottom:4px;font-size:13.5px}
 .lj-limit p{margin:0 0 6px;word-break:keep-all}
 .lj-limit .btn{margin-top:2px}
-</style>
+.wl-guide{display:flex;flex-direction:column;gap:3px;margin:0 0 4px;padding:12px 14px;border-radius:12px;background:#EEF4FF;border:1px solid #C9D9FF;color:#16326E;font-size:13.5px;line-height:1.5}.wl-guide b{font-size:14.5px}.wl-guide strong{color:#B91C1C;font-weight:800}.wl-guide small{color:#475569;font-size:12px}</style>
 <style id="sheetCss"></style>
 </head>
 <body>
 <div id="webLogin" class="wl hidden" role="dialog" aria-modal="true" aria-labelledby="wlT"><form id="wlForm" class="wl-card" autocomplete="on">
 <div class="wl-brand"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#003087"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b id="wlT">JB 환이</b><span>외환사업부 직원 로그인</span></div></div>
-<label class="fl"><span>행번 (사번 6자리)</span><input class="field" name="empno" type="text" inputmode="numeric" maxlength="40" placeholder="예: 219094" required autocomplete="username"></label>
+<div class="wl-guide" role="note"><b>사번(행번 6자리)을 입력해 주세요.</b><span>초기 비밀번호는 <strong>전북1%</strong> (영타: <strong>wjsqnr1%</strong>) 입니다.</span><small>처음 접속하는 사번도 바로 등록됩니다. 로그인한 뒤 「비밀번호 변경」으로 꼭 바꿔 주세요.</small></div><label class="fl"><span>행번 (사번 6자리)</span><input class="field" name="empno" type="text" inputmode="numeric" maxlength="40" placeholder="예: 219094" required autocomplete="username"></label>
 <label class="fl"><span>비밀번호</span><input class="field" name="password" type="password" required autocomplete="current-password"></label>
 <button class="btn" id="wlBtn" type="submit">로그인</button><p class="wl-st" id="wlSt" role="status"></p>
 <p class="wl-note">외환사업부 직원 전용입니다. 첫 로그인 후 왼쪽 아래 「비밀번호 변경」으로 꼭 바꿔 주세요.</p></form></div>
