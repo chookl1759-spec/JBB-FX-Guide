@@ -1,0 +1,36 @@
+# 평일 아침 서울외국환중개 고시환율을 받아 data/rates.json 을 갱신합니다(웹 사이트 홈 화면 고시환율).
+# 첫 고시가 늦는 날을 대비해 09:05~10:35(한국 시간) 사이 30분마다 시도하고, 바뀐 것이 있을 때만 커밋합니다.
+name: 고시환율 갱신
+
+on:
+  schedule:
+    - cron: "5,35 0,1 * * 1-5"
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: [".github/workflows/rates.yml", "tools/fetch_rates.py"]
+
+permissions:
+  contents: write
+
+concurrency: { group: rates, cancel-in-progress: false }
+
+jobs:
+  rates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 환율 받기
+        run: python3 tools/fetch_rates.py data/rates.json
+      - name: 바뀐 경우에만 커밋
+        run: |
+          OLD=$(git show HEAD:data/rates.json | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['latest'],json.dumps(d['rates'][d['latest']],sort_keys=True))")
+          NEW=$(python3 -c "import json;d=json.load(open('data/rates.json'));print(d['latest'],json.dumps(d['rates'][d['latest']],sort_keys=True))")
+          if [ "$OLD" = "$NEW" ]; then echo "변경 없음"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/rates.json
+          git commit -m "data: 고시환율 자동 갱신 $(TZ=Asia/Seoul date +%F)"
+          for i in 1 2 3; do git pull --rebase -q origin main && git push -q origin HEAD:main && exit 0; sleep 5; done
+          exit 1
