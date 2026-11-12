@@ -146,6 +146,7 @@
       } catch(e){}
     })();
   }
+  window.fxSb = function(){ return client(); };
   window.fxWebChangePw = async function(){
     var p1 = window.prompt("새 비밀번호를 입력하세요 (8자 이상, 영문·숫자·특수문자 조합 권장)"); if (p1 == null) return;
     if (p1.length < 8){ alert("비밀번호는 8자 이상이어야 합니다."); return; }
@@ -2582,6 +2583,29 @@ body{letter-spacing:-0.025em;line-height:1.65;word-break:keep-all;overflow-wrap:
 .lj-acc[open] > summary{border-bottom:1px solid var(--t-line)}
 .lj-acc > .lj-in{padding:4px 0 12px}
 .msg.ai .lj-sum{margin:0 0 10px}.msg.ai .lj-acc{margin:6px 0 0}.msg.ai .lj-acc > .lj-in{padding:6px 14px 12px}
+
+/* ===== 9차: 피드백 · 본점 승인 경고 · 면책 고지 · 단말 팁 ===== */
+.fb-row{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:8px 18px 14px}
+.fb-btn{border:1px solid var(--t-line);background:var(--surface);color:var(--t-body);border-radius:999px;padding:6px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:36px}
+.fb-btn:hover{border-color:var(--accent);color:var(--accent)}
+.msg.ai .fb-row{padding:6px 0 0}
+.hq-badge{display:flex;align-items:center;gap:6px;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;font-size:13.5px;font-weight:800;letter-spacing:-0.02em}
+:root[data-theme="dark"] .hq-badge{background:rgba(185,28,28,.18);border-color:rgba(252,165,165,.5);color:#fecaca}
+.tt-badge{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 18px 0;padding:8px 12px;border-radius:12px;background:var(--surface-2);border:1px dashed var(--t-line);font-size:12.5px;color:var(--t-cap)}
+.tt-badge b{color:var(--t-title);font-weight:700}.tt-badge span{padding:2px 8px;border-radius:999px;background:var(--surface);border:1px solid var(--t-line);color:var(--t-body);font-weight:600}
+.fx-disclaimer{position:fixed;left:0;right:0;bottom:0;z-index:35;padding:6px 14px calc(6px + env(safe-area-inset-bottom));text-align:center;font-size:11.5px;line-height:1.45;color:var(--t-cap);background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid var(--t-line);word-break:keep-all}
+body{padding-bottom:34px}
+@media (max-width:768px){.fx-disclaimer{left:10px;right:10px;bottom:calc(86px + env(safe-area-inset-bottom));padding:5px 10px;font-size:10.5px;border:1px solid var(--t-line);border-radius:12px;background:color-mix(in srgb,var(--surface) 92%,transparent)}body{padding-bottom:calc(130px + env(safe-area-inset-bottom))!important}}
+#fbDlg .wl-card{max-width:560px;width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow:auto}
+#fbDlg.hidden{display:none}
+#fbDlg textarea{width:100%;min-height:70px;resize:vertical}
+#fbDlg .ro{background:var(--surface-2);color:var(--t-cap);font-size:13px}
+.fb-prev{max-width:100%;max-height:180px;border-radius:10px;border:1px solid var(--t-line);margin-top:6px;display:block}
+.fbl{width:100%;border-collapse:collapse;font-size:13px}.fbl th,.fbl td{border-bottom:1px solid var(--t-line);padding:8px 6px;text-align:left;vertical-align:top}
+.fbl th{font-size:12px;color:var(--t-cap);font-weight:700;white-space:nowrap}.fbl td.c{color:var(--t-title);font-weight:600}
+.fbl img{max-width:120px;max-height:80px;border-radius:8px;border:1px solid var(--t-line);cursor:zoom-in}
+.tt-tbl{width:100%;border-collapse:collapse;font-size:13px}.tt-tbl td,.tt-tbl th{padding:5px 4px;border-bottom:1px solid var(--t-line);text-align:left}.tt-tbl input{width:100%;min-height:36px!important;font-size:13px!important;padding:4px 8px}
+@media (max-width:768px){.fbl thead{display:none}.fbl tr{display:block;border:1px solid var(--t-line);border-radius:14px;margin:0 0 10px;padding:8px 10px}.fbl td{display:block;border:0;padding:3px 0}.tt-tbl th:first-child{width:38%}}
 </style>
 <style id="sheetCss"></style>
 </head>
@@ -2799,7 +2823,8 @@ body{letter-spacing:-0.025em;line-height:1.65;word-break:keep-all;overflow-wrap:
   <p class="hint">매일 아침 국가법령정보센터 현행 버전을 자동 점검합니다. 조문 원문 전체는 새 PDF를 받아 갱신합니다.</p>
 </section></div>
 
-</main><nav class="m-tabbar" id="mTabbar" aria-label="하단 메뉴">
+</main><div class="fx-disclaimer" role="note">본 도구는 외환 실무 업무 지원용 보조 도구이며, 최종 거래 승인 및 법적 신고 책임은 담당 행원에게 있습니다.</div>
+<nav class="m-tabbar" id="mTabbar" aria-label="하단 메뉴">
 <button type="button" data-m="home"><i aria-hidden="true">🏠</i><span>홈</span></button>
 <button type="button" data-m="ask"><i aria-hidden="true">🔍</i><span>AI 검토</span></button>
 <button type="button" data-m="chat"><i aria-hidden="true">💬</i><span>실무 Q&amp;A</span></button>
@@ -3414,6 +3439,22 @@ function ljSummaryHTML(text){
     + (warn ? `<div class="lj-row"><i aria-hidden="true">⚠️</i><div><b>유의</b>${esc(warn.length > 110 ? warn.slice(0, 108) + "…" : warn)}</div></div>` : "")
     + `</section>`;
 }
+const HQ_TAG = /해외직접투자|해외부동산|대출·차입|증권·파생|상계·제3자|외국인투자|차입금|해외예금|해외투자·부동산 회수/;
+const HQ_LAW = /제5-(4|5|8|10|11)조|제7-\d+조|제9-\d+조|시행령 제8조/;
+function needHQ(v, tag){ v = v || {}; return HQ_TAG.test(tag || "") || HQ_LAW.test(String(v["근거조문"] || "")) || /한국은행|재정경제부|신고수리|금융감독원/.test(String(v["신고기관"] || "") + String(v["신고유형"] || "")); }
+function fxDecorate(box, t, q, text){
+  box.dataset.fbq = q; box.dataset.fba = String(text || "").slice(0, 20000); box.dataset.tk = (t && t.k) || "";
+}
+function fxAfterLift(box){
+  const s = box.querySelector(".lj-sum"), v = splitVerdict(box.dataset.fba || "").v || {}, tag = (box.querySelector(".tag") || {}).textContent || "";
+  if (s && needHQ(v, tag) && !s.querySelector(".hq-badge")) s.insertAdjacentHTML("afterbegin", '<div class="hq-badge" role="alert">⚠️ 외환사업부 본점 최종 승인 필요 건</div>');
+  const tip = (window.TERMTIPS || {})[box.dataset.tk];
+  if (tip && (tip.screen || tip.bok || tip.doc) && !box.querySelector(".tt-badge")){
+    const html = `<div class="tt-badge"><b>🖥 단말 입력 팁</b>${tip.screen ? `<span>거래화면 ${esc(tip.screen)}</span>` : ""}${tip.bok ? `<span>BOK 사유코드 ${esc(tip.bok)}</span>` : ""}${tip.doc ? `<span>증빙코드 ${esc(tip.doc)}</span>` : ""}</div>`;
+    const acc = box.querySelector(".lj-acc"); if (acc) acc.insertAdjacentHTML("beforebegin", html); else if (s) s.insertAdjacentHTML("afterend", html);
+  }
+  if (!box.querySelector(":scope > .fb-row")) box.insertAdjacentHTML("beforeend", '<div class="fb-row"><button type="button" class="fb-btn" data-fb-box>💬 피드백 / 오류 제보</button></div>');
+}
 function liftSummary(box, text){
   const hd = box.querySelector(".r-head"); if (!hd || box.querySelector(".lj-sum")) return;
   const html = ljSummaryHTML(text); if (!html) return;
@@ -3426,6 +3467,7 @@ function liftSummary(box, text){
   box.querySelectorAll(".r-body ~ .more, [data-more]").forEach(n => inner.append(n));
   box.querySelector(".lj-sum").after(det);
   const t = box.querySelector("[data-t]"); if (t) det.after(t);
+  try { fxAfterLift(box); } catch {}
 }
 
 /* ---------- 1단계: 빠진 사실관계 확인 ---------- */
@@ -3648,6 +3690,7 @@ async function ask(t, q, facts, o = {}){
       const cx = o.ctx || {};
       const rec = { type, typeKey:t.k, q, facts, answer:last, custName:cx.custName || "", branch:cx.branch || "", staff:cx.staff || "", payer:cx.payer || "", payee:cx.payee || "", payeeCountry:cx.payeeCountry || "", cur:cx.cur || "", amt:cx.amt || "", usd:cx.usd || 0, attachments:att.names, verdict:v, refs:ids.slice(0, 40), deep, rev:!!o.replace, conf:{ cited:cf.cited, gen:cf.gen, level:cf.label }, auto:!!o.auto, createdAt:new Date().toISOString(), createdMs:Date.now() };
       const mp = morePanel({ t, q, facts, answer:last, auto:o.auto, ctx:o.ctx, box }); if (mp) aEl.after(mp);
+      try { fxDecorate(box, t, q, last); } catch {}
       try { liftSummary(box, last); if (mp && mp.parentNode !== box.querySelector(".lj-in") && box.querySelector(".lj-in")) box.querySelector(".lj-in").append(mp); } catch {}
       const savedP = saveCase(rec);
       const r2host = document.createElement("div"); r2host.className = "r2"; xEl.before(r2host);
@@ -4726,12 +4769,13 @@ function chatBody(text){
     + (v["결론"] ? `<div class="lj-row"><i aria-hidden="true">📌</i><div><b>결론</b>${esc(v["결론"])}</div></div>` : "")
     + (docs.length ? `<div class="lj-row"><i aria-hidden="true">📋</i><div><b>필수 징구 서류</b><ul>${docs.slice(0, 3).map(d => `<li>${esc(d)}</li>`).join("")}</ul>${docs.length > 3 ? `<small>외 ${docs.length - 3}건은 아래 상세에서</small>` : ""}</div></div>` : "")
     + (v["유의"] ? `<div class="lj-row"><i aria-hidden="true">⚠️</i><div><b>유의</b>${esc(v["유의"])}</div></div>` : "") + `</section>`;
-  return card + (rest ? `<details class="lj-acc"><summary>관련 법령 조문 및 세부 규정 보기${v["근거"] ? ` (${esc(v["근거"])} 등)` : ""}</summary><div class="lj-in">${md(rest)}</div></details>` : "");
+  const hq = /③|④|신고수리|한국은행|재정경제부/.test(v["구분"] || "") || HQ_LAW.test("규정 " + (v["근거"] || "").replace(/^규정\s*/, ""));
+  return (hq ? '<div class="hq-badge" role="alert">⚠️ 외환사업부 본점 최종 승인 필요 건</div>' : "") + card + (rest ? `<details class="lj-acc"><summary>관련 법령 조문 및 세부 규정 보기${v["근거"] ? ` (${esc(v["근거"])} 등)` : ""}</summary><div class="lj-in">${md(rest)}</div></details>` : "");
 }
 function chatMsgHTML(m){
   if (m.role === "user") return `<div class="msg me"><div class="bub">${esc(m.text).replace(/\n/g, "<br>")}</div></div>`;
   const refs = chatRefs(m.text);
-  return `<div class="msg ai"><span class="av" aria-hidden="true">환</span><div class="bub">${m.text ? chatBody(m.text) : ""}${refs.length ? `<div class="chat-refs"><span>근거 원문</span>${refs.map(id => `<a class="ref" data-id="${esc(id)}">${esc(id)}</a>`).join("")}</div>` : ""}${m.err ? `<p class="chat-err">${esc(m.err)}</p>` : ""}</div></div>`;
+  return `<div class="msg ai"><span class="av" aria-hidden="true">환</span><div class="bub">${m.text ? chatBody(m.text) : ""}${m.text && !m.err ? `<div class="fb-row"><button type="button" class="fb-btn" data-fb-chat="${CHAT.indexOf(m)}">💬 피드백 / 오류 제보</button></div>` : ""}${refs.length ? `<div class="chat-refs"><span>근거 원문</span>${refs.map(id => `<a class="ref" data-id="${esc(id)}">${esc(id)}</a>`).join("")}</div>` : ""}${m.err ? `<p class="chat-err">${esc(m.err)}</p>` : ""}</div></div>`;
 }
 function chatRender(pendingText, stepTxt){
   const log = $("#chatLog");
@@ -5713,6 +5757,106 @@ window.__LOCAL = true;
   const mc = $("#mClaude"); if (mc) mc.onclick = () => open("ask");
   document.addEventListener("click", e => { const b = e.target.closest("[data-claude-deep]"); if (b) open(b.dataset.claudeDeep); });
   const sh = document.querySelector('#mSheet [data-ms="claude"]'); if (sh) sh.innerHTML = '<i aria-hidden="true">🤖</i>Claude 심층 검토';
+})();
+
+/* ---------- 직원 피드백 제보 ---------- */
+let FB_IMG = "";
+function fbShrink(file){
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => { const im = new Image(); im.onload = () => {
+    const k = Math.min(1, 1400 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); let q = .8, out = c.toDataURL("image/jpeg", q);
+    while (out.length > 900000 && q > .35){ q -= .1; out = c.toDataURL("image/jpeg", q); }
+    out.length > 1400000 ? rej(new Error("big")) : res(out); }; im.onerror = rej; im.src = fr.result; }; fr.onerror = rej; fr.readAsDataURL(file); });
+}
+function fbOpen(query, answer){
+  let d = document.getElementById("fbDlg");
+  if (!d){
+    d = document.createElement("div"); d.id = "fbDlg"; d.className = "wl hidden"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+    d.innerHTML = `<form class="wl-card"><div class="nm-h"><b>💬 피드백 / 오류 제보</b><span>틀린 답이나 보완할 내용을 알려 주세요. 외환사업부가 확인해 판정 기준에 반영합니다.</span></div>
+      <label class="fl"><span>질의 내용</span><textarea class="field ro" name="q" readonly></textarea></label>
+      <label class="fl"><span>현재 답변</span><textarea class="field ro" name="a" readonly style="min-height:110px"></textarea></label>
+      <label class="fl"><span>올바른 규정 / 수정 요청 내용</span><textarea class="field" name="c" required placeholder="예) 규정 제4-4조에 따르면 ○○ 서류도 받아야 합니다." style="min-height:100px"></textarea></label>
+      <label class="fl"><span>캡처 이미지 첨부 <em>선택 · 붙여넣기(Ctrl+V)도 됩니다</em></span><input type="file" name="img" accept="image/*" class="field"></label>
+      <img class="fb-prev hidden" alt="첨부 미리보기"><p class="hint">고객 이름·주민번호·계좌번호가 보이는 캡처는 올리지 마세요.</p>
+      <p class="wl-st" role="status"></p><div class="nm-btns"><button class="btn ghost" type="button" data-x>닫기</button><button class="btn" type="submit">제보하기</button></div></form>`;
+    document.body.appendChild(d);
+    const f = d.querySelector("form"), pv = d.querySelector(".fb-prev"), st = d.querySelector(".wl-st");
+    const take = async file => { if (!file || !/^image\//.test(file.type)) return; st.textContent = "이미지를 줄이는 중…"; try { FB_IMG = await fbShrink(file); pv.src = FB_IMG; pv.classList.remove("hidden"); st.textContent = ""; } catch { FB_IMG = ""; pv.classList.add("hidden"); st.textContent = "이미지가 너무 큽니다. 화면 일부만 캡처해 주세요."; } };
+    f.img.onchange = () => take(f.img.files[0]);
+    d.addEventListener("paste", e => { const it = [...(e.clipboardData || {}).items || []].find(x => /^image\//.test(x.type)); if (it) take(it.getAsFile()); });
+    d.querySelector("[data-x]").onclick = () => d.classList.add("hidden");
+    f.onsubmit = async ev => {
+      ev.preventDefault(); const c = f.c.value.trim(); if (c.length < 2){ st.textContent = "수정 요청 내용을 적어 주세요."; return; }
+      if (!window.fxSb){ st.textContent = "지금은 제보를 저장할 수 없습니다."; return; }
+      st.textContent = "저장 중…"; f.querySelector("[type=submit]").disabled = true;
+      try {
+        const me = window.FX_ME || {}, row = { empno: me.empno || String(me.email || "").split("@")[0] || "", query: maskPII(f.q.value).text, current_answer: f.a.value, correction: maskPII(c).text, image_url: FB_IMG || null };
+        const r = await fxSb().from("fx_feedback").insert(row); if (r.error) throw r.error;
+        st.textContent = ""; d.classList.add("hidden"); toast("제보를 접수했습니다. 고맙습니다!", 3500);
+      } catch (e){ st.textContent = /relation|does not exist|schema cache/i.test(e && e.message || "") ? "피드백 저장소가 아직 준비되지 않았습니다(관리자 SQL 실행 필요)." : "저장하지 못했습니다. 잠시 뒤 다시 시도하세요."; }
+      finally { f.querySelector("[type=submit]").disabled = false; }
+    };
+  }
+  const f = d.querySelector("form"); FB_IMG = ""; f.reset(); f.q.value = query || ""; f.a.value = answer || ""; d.querySelector(".fb-prev").classList.add("hidden"); d.querySelector(".wl-st").textContent = "";
+  d.classList.remove("hidden"); setTimeout(() => f.c.focus(), 50);
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-fb-box]");
+  if (b){ const box = b.closest(".result"); return fbOpen(box.dataset.fbq || (box.querySelector(".r-q") || {}).textContent || "", box.dataset.fba || ""); }
+  const c = e.target.closest("[data-fb-chat]");
+  if (c){ const i = +c.dataset.fbChat, m = CHAT[i]; let q = ""; for (let j = i - 1; j >= 0; j--) if (CHAT[j].role === "user"){ q = CHAT[j].text; break; } return fbOpen(q, m ? m.text : ""); }
+});
+
+/* ---------- 관리자: 직원 피드백 & AI 일괄 개선, 단말 입력 팁 ---------- */
+let FB_ROWS = [];
+window.TERMTIPS = {};
+const kstFull = iso => { const d = new Date(iso); return isNaN(d) ? "" : new Date(d.getTime() + 9 * 3600e3).toISOString().replace("T", " ").slice(0, 19); };
+function fbPrompt(rows){
+  return "[직원 실무 피드백 기반 외환 Q&A 엔진 자동 업데이트 요청]\n외환사업부 직원들이 파일럿 중 제보한 다음 실무 정정 사항을 지식베이스에 즉시 반영해 주세요:\n"
+    + rows.map(r => `   - 질문: ${String(r.query || "").replace(/\s+/g, " ").trim()} | 직원 수정의견: ${String(r.correction || "").replace(/\s+/g, " ").trim()}`).join("\n");
+}
+async function fbLoad(){
+  const host = $("#fbList"), st = $("#fbSt"); if (!host || !window.fxSb) return;
+  st.textContent = "불러오는 중…";
+  try {
+    const r = await fxSb().from("fx_feedback").select("*").order("created_at", { ascending:false }).limit(300); if (r.error) throw r.error;
+    FB_ROWS = r.data || []; st.textContent = `${FB_ROWS.length}건`;
+    host.innerHTML = FB_ROWS.length ? `<table class="fbl"><thead><tr><th>일시</th><th>사번</th><th>질문</th><th>수정 요청</th><th>첨부</th><th></th></tr></thead><tbody>` + FB_ROWS.map(x => `<tr><td>${esc(kstFull(x.created_at))}</td><td>${esc(x.empno || "-")}${(window.FX_STAFF || {})[x.empno] ? `<div class="hint">${esc(FX_STAFF[x.empno])}</div>` : ""}</td><td>${esc(String(x.query || "").slice(0, 200))}<details><summary class="hint">당시 답변</summary><div class="hint" style="white-space:pre-wrap;max-height:220px;overflow:auto">${esc(String(x.current_answer || "").replace(/<<\/?판정>>|<<\/?요약>>/g, "").slice(0, 3000))}</div></details></td><td class="c">${esc(x.correction || "")}</td><td>${x.image_url && /^data:image\//.test(x.image_url) ? `<img src="${x.image_url}" alt="첨부 캡처" data-fbimg>` : "-"}</td><td><button class="btn ghost sm" type="button" data-fbdel="${esc(x.id)}">처리 완료(삭제)</button></td></tr>`).join("") + `</tbody></table>` : '<p class="hint">아직 접수된 피드백이 없습니다.</p>';
+  } catch (e){ st.textContent = /relation|does not exist|schema cache/i.test(e && e.message || "") ? "피드백 표가 아직 없습니다. Supabase에서 피드백 SQL을 실행해 주세요." : "불러오지 못했습니다. (관리자 계정으로 로그인했는지 확인하세요)"; host.innerHTML = ""; }
+}
+function admExtras(){
+  const tab = $("#tab-admin"); if (!tab || $("#fbSec")) return;
+  tab.insertAdjacentHTML("beforeend", `<section class="panel" id="fbSec" style="margin-top:14px"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">📬 직원 피드백 & AI 일괄 개선</h2><div class="row"><button class="btn" type="button" id="fbPromptBtn">📋 Claude 자동 수정용 프롬프트 생성/복사</button><button class="btn ghost" type="button" id="fbReload">새로고침</button></div></div>
+    <p class="hint">직원들이 답변 아래 「피드백 / 오류 제보」로 보낸 내용입니다. 프롬프트를 복사해 Claude에 붙여 넣으면 판정 기준과 지식베이스 수정을 요청할 수 있습니다. 반영을 마친 건은 「처리 완료」로 지우세요.</p>
+    <div class="status" id="fbSt"></div><textarea class="field hidden" id="fbPromptOut" rows="8" style="width:100%;margin:8px 0" readonly></textarea><div id="fbList"></div></section>
+    <section class="panel" id="ttSec" style="margin-top:14px"><h2 style="margin:0 0 6px">🖥 단말 입력 팁 관리</h2>
+    <p class="hint">거래화면 번호·BOK 사유코드·증빙코드는 우리 은행 계정계와 한국은행 외환통계 분류표 기준이라 사이트가 임의로 채우지 않습니다. 여기에 등록한 유형만 AI 검토 결과 아래에 한 줄 뱃지로 표시됩니다.</p>
+    <table class="tt-tbl"><thead><tr><th>거래유형</th><th>거래화면 번호</th><th>BOK 사유코드</th><th>증빙코드</th></tr></thead><tbody>${TYPES.filter(t => t.g && !t.grp).map(t => `<tr data-tt="${t.k}"><th>${esc(t.n.replace(/^.*?· /, ""))}<div class="hint">${esc(GN[t.g] || "")}</div></th><td><input class="field" data-f="screen" maxlength="30"></td><td><input class="field" data-f="bok" maxlength="30"></td><td><input class="field" data-f="doc" maxlength="30"></td></tr>`).join("")}</tbody></table>
+    <div class="row" style="margin-top:10px"><button class="btn" type="button" id="ttSave">단말 팁 저장</button><span class="status" id="ttSt"></span></div></section>`);
+  $("#fbReload").onclick = fbLoad;
+  $("#fbPromptBtn").onclick = async () => {
+    if (!FB_ROWS.length) await fbLoad();
+    if (!FB_ROWS.length){ toast("접수된 피드백이 없습니다."); return; }
+    const txt = fbPrompt(FB_ROWS.slice().reverse()), out = $("#fbPromptOut"); out.value = txt; out.classList.remove("hidden");
+    try { await navigator.clipboard.writeText(txt); toast(`피드백 ${FB_ROWS.length}건으로 프롬프트를 만들어 복사했습니다. Claude에 붙여 넣으세요.`, 4500); } catch { out.select(); toast("아래 칸의 내용을 복사해 Claude에 붙여 넣으세요.", 4500); }
+  };
+  $("#fbList").addEventListener("click", async e => {
+    const im = e.target.closest("[data-fbimg]"); if (im){ const w = window.open(""); if (w) w.document.write(`<img src="${im.src}" style="max-width:100%">`); return; }
+    const del = e.target.closest("[data-fbdel]"); if (!del || !confirm("이 피드백을 처리 완료로 삭제할까요?")) return;
+    try { const r = await fxSb().from("fx_feedback").delete().eq("id", del.dataset.fbdel); if (r.error) throw r.error; fbLoad(); } catch { toast("삭제하지 못했습니다."); }
+  });
+  const fill = () => document.querySelectorAll("#ttSec [data-tt]").forEach(tr => { const v = TERMTIPS[tr.dataset.tt] || {}; tr.querySelectorAll("[data-f]").forEach(i => { if (document.activeElement !== i) i.value = v[i.dataset.f] || ""; }); });
+  fill(); window.__ttFill = fill;
+  $("#ttSave").onclick = async () => {
+    const o = {}; document.querySelectorAll("#ttSec [data-tt]").forEach(tr => { const v = {}; tr.querySelectorAll("[data-f]").forEach(i => { const s = i.value.trim(); if (s) v[i.dataset.f] = s; }); if (Object.keys(v).length) o[tr.dataset.tt] = v; });
+    try { const d = await claude.use("db"); await d.doc("settings/termtips").set({ tips:o, at:new Date().toISOString() }); $("#ttSt").textContent = "저장했습니다. 모든 직원의 검토 결과에 표시됩니다."; } catch { $("#ttSt").textContent = "저장하지 못했습니다."; }
+  };
+  fbLoad();
+}
+(async () => {
+  for (let i = 0; i < 60 && window.__owner === undefined; i++) await new Promise(r => setTimeout(r, 250));
+  try { const d = await claude.use("db"); d.doc("settings/termtips").onSnapshot(s => { const v = s.exists && s.data(); window.TERMTIPS = (v && v.tips) || {}; if (window.__ttFill) __ttFill(); }, () => {}); } catch {}
+  if (window.__owner) admExtras();
 })();
 /* ---------- 화면 밝기 ---------- */
 (function(){
