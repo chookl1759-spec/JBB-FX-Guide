@@ -110,7 +110,7 @@
         d = document.createElement("div"); d.id = "fxNameDlg"; d.className = "wl"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
         d.innerHTML = '<form class="wl-card nm-card"><div class="nm-h"><b>이름을 알려 주세요</b><span>검토 내역과 화면 위쪽에 표시됩니다. 나중에 위쪽 「이름 변경」으로 바꿀 수 있습니다.</span></div>'
           + '<label class="fl"><span>이름</span><input class="field" name="nm" type="text" maxlength="20" required autocomplete="name" placeholder="예: 홍길동"></label>'
-          + '<label class="fl"><span>직위 <em>선택</em></span><select class="field" name="tt"><option value="">선택 안 함</option><option>계장</option><option>대리</option><option>과장</option><option>차장</option><option>부장</option><option>부부장</option><option>팀장</option><option>부지점장</option><option>지점장</option><option>기타</option></select></label>'
+          + '<label class="fl"><span>직위 <em>선택</em></span><select class="field" name="tt"><option value="">선택 안 함</option><option>계장</option><option>대리</option><option>과장</option><option>부부장</option><option>팀장</option><option>부장</option><option>부지점장</option><option>지점장</option><option>기타</option></select></label>'
           + '<p class="wl-st" role="status"></p><div class="nm-btns"><button class="btn ghost" type="button" data-x>나중에</button><button class="btn" type="submit">저장</button></div></form>';
         document.body.appendChild(d);
         d.querySelector("[data-x]").onclick = function(){ d.classList.add("hidden"); };
