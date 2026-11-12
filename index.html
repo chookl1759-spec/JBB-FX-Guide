@@ -86,8 +86,11 @@
       try {
         var uid = session.user.id, r = await client().from(CFG.table).select("data").eq("coll", "users").eq("id", uid).maybeSingle();
         var cur = (r && r.data && r.data.data) || {};
-        if (cur.name === me.name && cur.empno === me.empno) return;
-        await client().from(CFG.table).upsert({ coll:"users", id: uid, data: Object.assign({}, cur, { name: me.name, empno: me.empno }), created_ms: Date.now() }, { onConflict:"coll,id" });
+        var day = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+        var add = { name: me.name, empno: me.empno, email: me.email };
+        if (!cur.firstSeen) add.firstSeen = cur.lastSeen || day;
+        if (cur.name === add.name && cur.empno === add.empno && cur.email === add.email && cur.firstSeen) return;
+        await client().from(CFG.table).upsert({ coll:"users", id: uid, data: Object.assign({}, cur, add), created_ms: Date.now() }, { onConflict:"coll,id" });
       } catch(e){}
     })();
   }
@@ -171,6 +174,7 @@
         return r.data ? snapDoc(r.data) : { id:id, exists:false, data:function(){ return undefined; } };
       },
       set: async function(data){
+        if (coll === "users"){ try { var o = await client().from(CFG.table).select("data").eq("coll", coll).eq("id", id).maybeSingle(); if (o && o.data && o.data.data) data = Object.assign({}, o.data.data, data); } catch(e){} }
         var r = await client().from(CFG.table).upsert({ coll: coll, id: id, data: data, created_ms: (data && data.createdMs) || Date.now() }, { onConflict:"coll,id" });
         if (r.error) throw err(r.error); bump(coll);
       },
@@ -4713,11 +4717,11 @@ function admRender(){
   const ids = new Set([...Object.keys(ADM_USERS), ...Object.keys(ADM_BLOCK), ...allCases().map(c => c.author).filter(Boolean)]);
   const m0 = TODAY.slice(0, 7);
   const rows = [...ids].map(id => { const u = ADM_USERS[id] || {}, cs = allCases().filter(c => c.author === id);
-    return { id, first:u.firstSeen || "", last:u.lastSeen || "", n:cs.length, nm:cs.filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, lastRev:cs.length ? kstDay(cs[0].createdMs) : "", blocked:!!ADM_BLOCK[id], why:(ADM_BLOCK[id] || {}).reason || "" }; })
+    const label = u.name || (u.empno ? "행번 " + u.empno : "") || String(u.email || "").split("@")[0] || (cs.some(c => c.src === "claude") ? "Claude 버전 검토 기록" : "") || "이름 미등록"; return { id, label, emp:u.empno || "", first:u.firstSeen || "", last:u.lastSeen || "", n:cs.length, nm:cs.filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, lastRev:cs.length ? kstDay(cs[0].createdMs) : "", blocked:!!ADM_BLOCK[id], why:(ADM_BLOCK[id] || {}).reason || "" }; })
     .sort((a, b) => (b.last || b.lastRev).localeCompare(a.last || a.lastRev));
   const act = rows.filter(r => !r.blocked).length;
   $("#admStats").innerHTML = [["전체 이용자", rows.length, ""], ["이용 중", act, "ok"], ["차단", rows.length - act, "warn"], ["이번 달 검토", allCases().filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, ""]].map(([k, v, cl]) => `<div class="st ${cl}"><span>${k}</span><b>${v}</b></div>`).join("");
-  host.innerHTML = rows.length ? `<div class="ctable-wrap"><table class="ctable adm"><thead><tr><th>이용자</th><th>처음 사용</th><th>마지막 사용</th><th>검토 건수</th><th>이번 달</th><th>최근 검토일</th><th>상태</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><b data-uid="${esc(r.id)}">…</b></td><td>${esc(r.first || "-")}</td><td>${esc(r.last || "-")}</td><td>${r.n}</td><td>${r.nm}</td><td>${esc(r.lastRev || "-")}</td><td>${r.id === me ? '<span class="pill v-info">소유자</span>' : r.blocked ? `<span class="pill v-crit">차단</span>${r.why ? `<div class="hint">${esc(r.why)}</div>` : ""}` : '<span class="pill v-ok">이용 중</span>'}</td><td>${r.id === me ? "" : r.blocked ? `<button class="btn ghost sm" type="button" data-unblock="${esc(r.id)}">차단 해제</button>` : `<button class="btn ghost sm" type="button" data-block="${esc(r.id)}">차단</button>`}</td></tr>`).join("")}</tbody></table></div>` : '<p class="hint">아직 기록된 이용자가 없습니다. 직원이 페이지를 열면 여기에 나타납니다.</p>';
+  host.innerHTML = rows.length ? `<div class="ctable-wrap"><table class="ctable adm"><thead><tr><th>이용자</th><th>처음 사용</th><th>마지막 사용</th><th>검토 건수</th><th>이번 달</th><th>최근 검토일</th><th>상태</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><b data-uid="${esc(r.id)}" data-fb="${esc(r.label)}">${esc(r.label)}</b>${r.emp ? `<div class="hint">행번 ${esc(r.emp)}</div>` : ""}</td><td>${esc(r.first || "-")}</td><td>${esc(r.last || "-")}</td><td>${r.n}</td><td>${r.nm}</td><td>${esc(r.lastRev || "-")}</td><td>${r.id === me ? '<span class="pill v-info">소유자</span>' : r.blocked ? `<span class="pill v-crit">차단</span>${r.why ? `<div class="hint">${esc(r.why)}</div>` : ""}` : '<span class="pill v-ok">이용 중</span>'}</td><td>${r.id === me ? "" : r.blocked ? `<button class="btn ghost sm" type="button" data-unblock="${esc(r.id)}">차단 해제</button>` : `<button class="btn ghost sm" type="button" data-block="${esc(r.id)}">차단</button>`}</td></tr>`).join("")}</tbody></table></div>` : '<p class="hint">아직 기록된 이용자가 없습니다. 직원이 페이지를 열면 여기에 나타납니다.</p>';
   fillNames(host);
 }
 async function admBlock(id, on, b){
