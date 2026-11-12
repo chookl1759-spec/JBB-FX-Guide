@@ -29,11 +29,12 @@
   /* 외환사업부 직원 행번 → 실명 (219094 추현수: 관리자) */
   var STAFF = window.FX_STAFF = { "196046":"김지아", "211022":"고효영", "213013":"강미선", "218115":"강유진", "219094":"추현수" };
   var ADMIN_EMPNO = { "219094": true };
+  var STAFF_TITLE = { "219094":"대리" };
   var EMAIL_DOMAIN = "jbb.co.kr";
   function empOf(email){ var m = String(email || "").toLowerCase().match(/^(\d{6})@jbb\.co\.kr$/); return m ? m[1] : ""; }
   function meInfo(){
     var u = session && session.user, email = u && u.email || "", emp = empOf(email), md = (u && u.user_metadata) || {};
-    return { empno: emp, name: STAFF[emp] || md.name || (email ? email.split("@")[0] : ""), email: email };
+    return { empno: emp, name: emp ? (STAFF[emp] || "행번 " + emp + " 님") : (md.name || (email ? email.split("@")[0] : "")), title: STAFF_TITLE[emp] || "", email: email };
   }
   var sb = null, session = null, ready = null;
 
@@ -85,21 +86,22 @@
   function afterLogin(){
     var me = window.FX_ME = meInfo();
     function paint(){
-      var w = document.getElementById("webUser"); if (w){ w.innerHTML = '<span aria-hidden="true">👤</span> <b></b>' + (me.empno ? ' <small></small>' : ''); w.querySelector("b").textContent = me.name + " 님"; if (me.empno) w.querySelector("small").textContent = me.empno; w.classList.remove("hidden"); }
-      var a = document.getElementById("webAcct"); if (a) a.textContent = me.name + (me.empno ? " (" + me.empno + ")" : "");
-      var sf = document.getElementById("staffName"); if (sf && !sf.value.trim() && me.empno){ sf.value = me.name; try { localStorage.setItem("fxdesk.staff", me.name); } catch(e){} }
+      var w = document.getElementById("webUser"); if (w){ var kn = !/님$/.test(me.name); w.innerHTML = '<span aria-hidden="true">👤</span> <b></b> <small></small>'; w.querySelector("b").textContent = kn ? me.name + (me.title ? " " + me.title : "") : me.name; w.querySelector("small").textContent = kn && me.empno ? "(외환사업부 · " + me.empno + ")" : "(외환사업부)"; w.classList.remove("hidden"); }
+      var a = document.getElementById("webAcct"); if (a) a.textContent = /님$/.test(me.name) ? me.name + " (외환사업부)" : me.name + (me.title ? " " + me.title : "") + " (외환사업부" + (me.empno ? " · " + me.empno : "") + ")";
+      var sf = document.getElementById("staffName"); if (sf && !sf.value.trim() && me.empno && STAFF[me.empno]){ sf.value = me.name; try { localStorage.setItem("fxdesk.staff", me.name); } catch(e){} }
     }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", paint); else paint();
     (async function(){
       try {
         var uid = session.user.id, r = await client().from(CFG.table).select("data").eq("coll", "users").eq("id", uid).maybeSingle();
         var cur = (r && r.data && r.data.data) || {};
-        if (cur.link && cur.name){ me.name = cur.name; if (cur.empno) me.empno = cur.empno; }
-        me.title = cur.title || ""; window.FX_ME = me; paint(); try { document.dispatchEvent(new Event("fxme")); } catch(e){}
+        if (cur.link && cur.name && !me.empno){ me.name = cur.name; if (cur.empno) me.empno = cur.empno; me.title = cur.title || ""; }
+        if (!me.title) me.title = STAFF_TITLE[me.empno] || ""; window.FX_ME = me; paint(); try { document.dispatchEvent(new Event("fxme")); } catch(e){}
         var day = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
         var add = { name: me.name, empno: me.empno, email: me.email };
         if (!cur.firstSeen) add.firstSeen = cur.lastSeen || day;
-        if (cur.name === add.name && cur.empno === add.empno && cur.email === add.email && cur.firstSeen) return;
+        if (!cur.firstSeen && !cur.lastSeen && !cur.firstSeenAt) add.firstSeenAt = new Date(Date.now() + 9 * 3600e3).toISOString().replace("T", " ").slice(0, 19);
+        if (cur.name === add.name && cur.empno === add.empno && cur.email === add.email && cur.firstSeen && !add.firstSeenAt) return;
         await client().from(CFG.table).upsert({ coll:"users", id: uid, data: Object.assign({}, cur, add), created_ms: Date.now() }, { onConflict:"coll,id" });
       } catch(e){}
     })();
@@ -2497,8 +2499,13 @@ table.dt td small{display:block}
 }
 
 /* 내장 판정 엔진(웹): Claude 연결 버튼·AI 전용 기능 숨김 */
-#claudeBtn,#mClaude,#mSheet [data-ms="claude"],#claudeDlg,[data-deep],label:has(> #deep),#agUnavail,#chatUnavail:empty{display:none!important}
+#claudeDlg,[data-deep],label:has(> #deep),#agUnavail,#chatUnavail:empty{display:none!important}
 .lj-note{margin:10px 18px 0;padding:8px 12px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:12.5px;line-height:1.5}
+
+.lj-limit{margin:0 0 14px;padding:12px 14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));background:var(--accent-soft);font-size:13px;line-height:1.6;color:var(--text)}
+.lj-limit > b{display:block;color:var(--accent);margin-bottom:4px;font-size:13.5px}
+.lj-limit p{margin:0 0 6px;word-break:keep-all}
+.lj-limit .btn{margin-top:2px}
 </style>
 <style id="sheetCss"></style>
 </head>
@@ -2570,7 +2577,7 @@ table.dt td small{display:block}
   <div class="col">
     <div class="banner upd hidden" id="updBanner"></div>
     <div class="banner warn hidden" id="unavail"><b>AI 거래 검토는 Claude 버전에서 합니다.</b> 이 사이트에서는 한도 계산, 서식함, 원문 검색, 기준 법령, 팀 검토 내역, 서류 가림, 결과서 인쇄를 쓸 수 있습니다. 적은 질의는 복사해 두었다가 Claude 화면에 붙여 넣으면 됩니다.<br><a class="btn sm" href="https://claude.ai/artifact/DDnczYEeDHT7s2JAFxYb3J" target="_blank" rel="noopener">Claude에서 AI 검토 열기</a></div>
-    <section class="panel" aria-label="질의 작성">
+    <div class="lj-limit" role="note"><b>내장 판정 엔진으로 바로 판정합니다</b><p>외국환거래규정·취급지침 원문 조항에 연결된 규칙으로 판정하므로 로그인만으로 무료·무제한으로 쓸 수 있습니다. 다만 질의 문장을 AI처럼 이해하지는 못하고, 규칙에 없는 거래(증권·차입·외국인투자·환전 등)는 '확인 필요'로 표시하며, 2차 검토·심층 검토와 첨부 서류 읽기는 하지 않습니다.</p><p><b>심층적으로 확인하려면 Claude에 로그인해 Claude 버전에서 검토하세요.</b> 아래 버튼을 누르면 질의를 복사하고 Claude 버전을 엽니다. Claude에 로그인한 상태로 붙여 넣고 검토하면 AI가 원문을 찾아 읽고 2차 검토까지 합니다.</p><button type="button" class="btn ghost sm" data-claude-deep="ask">🤖 Claude로 심층 검토</button></div><section class="panel" aria-label="질의 작성">
       <div class="step">
         <div class="step-h"><span class="step-n">1</span><span class="step-t">거래유형</span><span class="hint">큰 분류를 고르면 세부 유형이 나옵니다. 모르면 '자동 판단'으로 두세요</span></div>
         <div class="types grp" id="types"></div>
@@ -2623,6 +2630,7 @@ table.dt td small{display:block}
 <div class="wrap single hidden" id="tab-chat">
   <section class="card chat-card">
     <div class="card-h"><h2>무엇이든 물어보세요</h2><span class="hint">서류 보는 법, 전산·창구 처리, 용어, 수출입·송금·환전 실무. 원문에 근거가 있으면 조문을 함께 보여 줍니다.</span></div>
+<div class="lj-limit" role="note"><b>내장 원문 검색으로 답합니다</b><p>질문과 관련된 조문·지침을 찾아 보여 주고, 거래 유형이 분명하면 판정 요약을 함께 보여 줍니다. AI처럼 문장으로 풀어 설명하지는 못합니다. 자세한 설명이 필요하면 Claude에 로그인해 Claude 버전에서 물어보세요.</p><button type="button" class="btn ghost sm" data-claude-deep="chat">🤖 Claude로 자세히 묻기</button></div>
     <div class="banner warn hidden" id="chatUnavail"></div>
     <div class="chat-log" id="chatLog" aria-live="polite"></div>
     <div class="chat-sugg" id="chatSugg"><button type="button" class="qtag" data-cq="수출입신고필증에서 자사 FOB와 타사 FOB 금액은 어떻게 확인하나요?">수출입신고필증에서 자사 FOB와 타사 FOB 금액은 어떻게 확인하나요?</button><button type="button" class="qtag" data-cq="송금방식 수입대금을 보낼 때 받아야 할 증빙서류는 무엇인가요?">송금방식 수입대금을 보낼 때 받아야 할 증빙서류는 무엇인가요?</button><button type="button" class="qtag" data-cq="외국인 근로자 급여 송금 때 취득경위 입증서류는 어떻게 확인하나요?">외국인 근로자 급여 송금 때 취득경위 입증서류는 어떻게 확인하나요?</button><button type="button" class="qtag" data-cq="해외직접투자 신고 후 사후관리 보고는 언제까지 받나요?">해외직접투자 신고 후 사후관리 보고는 언제까지 받나요?</button><button type="button" class="qtag" data-cq="수출대금을 미리 받았는데(선수금) 수출이 취소되면 어떻게 처리하나요?">수출대금을 미리 받았는데(선수금) 수출이 취소되면 어떻게 처리하나요?</button><button type="button" class="qtag" data-cq="환전할 때 여권에 매각 사실을 적어야 하는 경우는?">환전할 때 여권에 매각 사실을 적어야 하는 경우는?</button></div>
@@ -3491,6 +3499,7 @@ async function ask(t, q, facts, o = {}){
       xEl.querySelector("[data-chk]").onclick = () => saveChecklist(type, q, facts, last, setStatus);
       xEl.querySelector("[data-copy]").onclick = ev => copyResult(type, q, facts, last, ev.currentTarget);
       const dz = xEl.querySelector("[data-deep]"); if (dz) dz.onclick = () => ask(t, q, facts, { deep:true, auto:o.auto, ctx:o.ctx, replace:box, prevV:st });
+      if (window.__LOCAL){ const cb = document.createElement("button"); cb.type = "button"; cb.className = "btn ghost sm"; cb.textContent = "🤖 Claude로 심층 검토"; cb.title = "질의를 복사하고 Claude 버전을 엽니다. Claude에 로그인한 상태로 붙여 넣으면 AI가 심층 검토합니다."; cb.onclick = () => toClaude(`[거래유형] ${type}\n${q}${facts ? "\n" + facts : ""}`, setStatus); xEl.append(cb); }
       const cx = o.ctx || {};
       const rec = { type, typeKey:t.k, q, facts, answer:last, custName:cx.custName || "", branch:cx.branch || "", staff:cx.staff || "", payer:cx.payer || "", payee:cx.payee || "", payeeCountry:cx.payeeCountry || "", cur:cx.cur || "", amt:cx.amt || "", usd:cx.usd || 0, attachments:att.names, verdict:v, refs:ids.slice(0, 40), deep, rev:!!o.replace, conf:{ cited:cf.cited, gen:cf.gen, level:cf.label }, auto:!!o.auto, createdAt:new Date().toISOString(), createdMs:Date.now() };
       const mp = morePanel({ t, q, facts, answer:last, auto:o.auto, ctx:o.ctx, box }); if (mp) aEl.after(mp);
@@ -4930,13 +4939,14 @@ try { const l = JSON.parse(localStorage.getItem("fxdesk.emblem") || "null"); if 
 })();
 
 /* ---------- 관리 (소유자 전용): 이용자 목록·차단 ---------- */
+function kstStamp(ms){ return new Date((ms || Date.now()) + 9 * 3600e3).toISOString().replace("T", " ").slice(0, 19); }
 let ADM_USERS = {}, ADM_BLOCK = {};
 function admRender(){
   const host = $("#admBody"); if (!host || !window.__owner) return;
   const ids = new Set([...Object.keys(ADM_USERS), ...Object.keys(ADM_BLOCK), ...allCases().map(c => c.author).filter(Boolean)]);
   const m0 = TODAY.slice(0, 7);
   const rows = [...ids].map(id => { const u = ADM_USERS[id] || {}, cs = allCases().filter(c => c.author === id);
-    const label = u.name || (u.empno ? "행번 " + u.empno : "") || String(u.email || "").split("@")[0] || (cs.some(c => c.src === "claude") ? "Claude 버전 검토 기록" : "") || "이름 미등록"; return { id, label, emp:u.empno || "", first:u.firstSeen || "", last:u.lastSeen || "", n:cs.length, nm:cs.filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, lastRev:cs.length ? kstDay(cs[0].createdMs) : "", blocked:!!ADM_BLOCK[id], why:(ADM_BLOCK[id] || {}).reason || "" }; })
+    const label = u.name || (u.empno ? "행번 " + u.empno : "") || String(u.email || "").split("@")[0] || (cs.some(c => c.src === "claude") ? "Claude 버전 검토 기록" : "") || "이름 미등록"; return { id, label, emp:u.empno || "", first:u.firstSeenAt || u.firstSeen || "", last:u.lastSeenAt || u.lastSeen || "", n:cs.length, nm:cs.filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, lastRev:cs.length ? kstStamp(Math.max(...cs.map(c => c.createdMs || 0))) : "", blocked:!!ADM_BLOCK[id], why:(ADM_BLOCK[id] || {}).reason || "" }; })
     .sort((a, b) => (b.last || b.lastRev).localeCompare(a.last || a.lastRev));
   const act = rows.filter(r => !r.blocked).length;
   $("#admStats").innerHTML = [["전체 이용자", rows.length, ""], ["이용 중", act, "ok"], ["차단", rows.length - act, "warn"], ["이번 달 검토", allCases().filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, ""]].map(([k, v, cl]) => `<div class="st ${cl}"><span>${k}</span><b>${v}</b></div>`).join("");
@@ -4967,7 +4977,7 @@ document.addEventListener("click", e => {
   try { owner = !!(await u.isOwner()); } catch {}
   if (!id) return;
   // 이용 기록: 하루에 한 번만 갱신
-  try { const ref = d.doc("users/" + id), s = await ref.get(); if (!s.exists) await ref.set({ firstSeen:TODAY, lastSeen:TODAY }); else if ((s.data() || {}).lastSeen !== TODAY) await ref.update({ lastSeen:TODAY }); } catch {}
+  try { const ref = d.doc("users/" + id), s = await ref.get(), now = kstStamp(); if (!s.exists) await ref.set({ firstSeen:TODAY, lastSeen:TODAY, firstSeenAt:now, lastSeenAt:now }); else await ref.update({ lastSeen:TODAY, lastSeenAt:now }); } catch {}
   // 차단 확인
   if (!owner) d.doc("blocked/" + id).onSnapshot(s => { if (s.exists){ blocked = true; $("#blockWall").classList.remove("hidden"); $("#askBtn").disabled = true; } }, () => {});
   if (!owner) return;
@@ -4997,8 +5007,9 @@ document.addEventListener("click", e => {
   function given(n){ n = String(n || "").replace(/\s+(대리|과장|차장|부장|주임|계장|팀장|행원)$/, ""); return /^[가-힣]{3}$/.test(n) ? n.slice(1) : n; }
   function me(){
     const m = window.FX_ME || {};
-    $("#mName").textContent = m.name ? m.name + (m.title ? " " + m.title : "") : "로그인 중…";
-    $("#mSub").textContent = "외환사업부" + (m.empno ? " · " + m.empno : "");
+    const known = m.name && !/님$/.test(m.name);
+    $("#mName").textContent = m.name ? m.name + (known && m.title ? " " + m.title : "") : "로그인 중…";
+    $("#mSub").textContent = "외환사업부" + (known && m.empno ? " · " + m.empno : "");
     $("#mAcct").innerHTML = m.name ? `<b>${esc(m.name)}</b>${m.empno ? " · 행번 " + esc(m.empno) : ""}` : "로그인 정보를 불러오는 중…";
     $("#mAdm").classList.toggle("hidden", !window.__owner);
   }
@@ -5112,7 +5123,7 @@ window.__LOCAL = true;
     const u = x.usd, acc = x.acc;
     const base = { basis:["거주자(외국인거주자 제외)는 신고가 필요 없는 거래로서 연간 누계 미화 10만불 이내이면 지급등의 증빙서류 없이 지급할 수 있고, 10만불은 모든 외국환업무취급기관등을 통한 지급을 합산합니다 [규정 제4-3조].", "증빙서류 없이 지급하는 경우에도 거래 내용을 설명하고 은행 확인을 받아야 합니다 [규정 제4-3조].", "연간 누계는 한국은행 해외송금 통합관리시스템(ORIS)으로 관리합니다 [지침 p.38]."],
       docs:[APP, IDD], forms:["[서식 제3-1호]"], ids:["규정 제4-3조", "지침 p.38", "지침 p.39"],
-      cautions:["이 지급은 거래외국환은행 지정 대상이 아닙니다.", "연간 누계는 1월 1일부터 12월 31일까지, 다른 금융회사를 통한 무증빙 송금까지 합산합니다. 창구에서 ORIS로 반드시 조회하세요.", "해외부동산·해외직접투자·해외예금처럼 신고가 필요한 자본거래 자금이면 이 방법으로 보낼 수 없습니다. 해당 유형으로 다시 판정하세요."] };
+      cautions:["이 지급은 거래외국환은행 지정 대상이 아닙니다.", "연간 누계는 1월 1일부터 12월 31일까지, 다른 금융회사를 통한 무증빙 송금까지 합산합니다. 창구에서 ORIS로 반드시 조회하세요.", "같은 사람이나 가족·관련자가 5천불·1만불 바로 아래 금액으로 여러 번 나눠 보내면 규정 회피성 분할 송금인지 점검하세요. 규정은 분할한 지급을 합산해 판단합니다 [규정 제5-10조].", "해외부동산·해외직접투자·해외예금처럼 신고가 필요한 자본거래 자금이면 이 방법으로 보낼 수 없습니다. 해당 유형으로 다시 판정하세요."] };
     if (u && u > 1e5){
       return R({ ...base, v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항; 규정 제4-3조제1항제2호", "불요", `${U(u)}은 증빙 없이 보낼 수 있는 연간 10만불을 넘으므로, 지급 사유와 금액을 입증하는 서류를 내시면 신고 없이 보낼 수 있습니다.`),
         concl:`이번 지급 ${U(u)}은 증빙서류 없이 보낼 수 있는 연간 누계 10만불을 넘습니다. 지급 사유와 금액을 입증하는 서류를 받아 은행이 확인한 뒤 지급합니다(신고 불요).`,
@@ -5126,6 +5137,17 @@ window.__LOCAL = true;
       concl:`${amt}은 올해 무증빙 송금 누계(다른 금융회사 포함)와 합쳐 미화 10만불 이내라면 지급등의 증빙서류 없이 보낼 수 있습니다(신고 불요). 누계가 10만불을 넘으면 건당 5천불 이내이거나, 지급 사유와 금액을 서류로 확인한 경우에만 보낼 수 있습니다.`,
       steps:["ORIS로 올해 무증빙 송금 누계를 조회합니다" + (acc ? " (올해 같은 사유의 기존 거래가 있다고 하셨습니다)." : "."), "고객에게 송금 사유를 듣고, 신고가 필요한 자본거래가 아닌지 확인합니다.", "지급신청서와 실명확인증표를 받아 송금합니다."],
       more:(u ? [] : ["거래금액을 입력하면 한도 초과 여부까지 판정합니다."]).concat(["올해 누계와 합쳐 10만불을 넘으면 건당 미화 5천불 이내이거나, 지급 사유와 금액을 서류로 확인한 경우에만 보낼 수 있습니다 [규정 제4-3조]." + (acc ? " 올해 같은 사유의 기존 거래가 있다고 하셨으니 ORIS 누계를 꼭 확인하세요." : "")]) });
+  };
+  const SPLIT = (q, u) => /나눠|나누어|분할|쪼개|여러\s*(번|차례|건)/.test(q) || (u >= 4500 && u <= 5000) || (u >= 9500 && u <= 1e4);
+  const _og = RULE.out_gen;
+  RULE.out_gen = (q, x) => {
+    const r = _og(q, x);
+    if (r && r.v && /제4-3조/.test(r.v["근거조문"] || "") && SPLIT(q, x.usd)){
+      r.v["본점확인"] = "필요 — 5천불·1만불 직전 금액이나 분할 송금으로 보여 규정 회피성 분산거래 여부 점검";
+      r.more = ["같은 날·가까운 날짜에 본인·가족·관련자 명의로 나눈 송금이 있는지 ORIS와 자행 거래내역으로 확인하세요. 나눈 금액은 합산해 한도와 신고 기준을 판단합니다 [규정 제5-10조]."].concat(r.more || []);
+      r.ids = (r.ids || []).concat(["규정 제5-10조"]);
+    }
+    return r;
   };
   RULE.out_travel = (q, x) => {
     if (/유학|재학|학생|체재|파견|주재|연수/.test(q)){
@@ -5192,11 +5214,11 @@ window.__LOCAL = true;
     if (/금융회사|은행|보험|증권사|카드사/.test(q)) return generic(q, x, "금융회사등의 해외직접투자는 「금융회사등의 해외진출에 관한 규정」에 따라 금융감독원 신고 대상이 될 수 있습니다.");
     return R({ v:V("신고 필요", "외국환은행 신고 (사전신고)", "외국환은행의 장 (주채권은행 → 여신최다은행 → 거주자가 지정하는 은행 순)", "거래 전 사전신고", "확인 필요", "② 지정은행 확인", "규정 제9-5조제1항", "필요 — 신고 은행 결정과 첨부서류 심사", "해외에 회사를 세우거나 지분을 사는 해외직접투자는 투자 전에 정해진 은행에 신고해야 합니다."),
       concl:"거주자의 해외직접투자(증액투자 포함)는 투자 전에 외국환은행에 신고해야 합니다. 신고 은행은 주채무계열 소속이면 주채권은행, 아니면 여신최다은행, 둘 다 아니면 거주자가 지정하는 은행입니다.",
-      basis:["거주자가 해외직접투자를 하려면 주채권은행, 여신최다은행 또는 거주자가 지정하는 은행 순으로 정해지는 외국환은행에 신고해야 합니다 [규정 제9-5조].", "기존 투자자로부터 지분을 양수하거나 이익유보금·자본잉여금으로 증액하는 경우 등은 3개월 이내 사후보고할 수 있습니다 [규정 제9-5조]."],
+      basis:["해외직접투자는 외국법인 지분 10% 이상 취득, 또는 10% 미만이라도 임원 파견·1년 이상 원자재·제품 매매계약·기술 제공 등 관계를 맺는 투자입니다 [시행령 제8조].", "거주자가 해외직접투자를 하려면 주채권은행, 여신최다은행 또는 거주자가 지정하는 은행 순으로 정해지는 외국환은행에 신고해야 합니다 [규정 제9-5조].", "투자금액 납입 후 6개월 이내 외화증권(채권)취득보고서, 송금 즉시 송금(투자)보고서를 내야 합니다 [규정 제9-9조].", "기존 투자자로부터 지분을 양수하거나 이익유보금·자본잉여금으로 증액하는 경우 등은 3개월 이내 사후보고할 수 있습니다 [규정 제9-5조]."],
       steps:["투자자가 주채무계열 소속인지, 여신최다은행이 어디인지 확인해 신고 은행을 정합니다.", "해외직접투자신고서와 첨부서류를 받아 심사합니다.", "신고 수리 후 투자자금을 송금하고, 이후 사후관리(외화증권취득보고 등)를 안내합니다."],
       docs:["해외직접투자 신고서(보고서) (별지 제9-1호)", "사업계획서 (자금조달 및 운용계획 포함)", "신용정보 집중기관에 채무불이행자로 등록되지 않았음을 입증하는 서류", "납세증명서 (조세체납이 없음을 입증)", "그 밖에 신고기관이 필요하다고 인정하는 서류"],
       forms:["[별지 9-1]"], ids:["규정 제9-5조"],
-      cautions:["신고 없이 투자했거나 신고 내용과 다르게 투자했으면 제재기관에 위반사실을 보고한 뒤 사후신고할 수 있습니다 [규정 제9-5조]."] });
+      cautions:["신고 없이 투자했거나 신고 내용과 다르게 투자했으면 제재기관에 위반사실을 보고한 뒤 사후신고할 수 있습니다 [규정 제9-5조].", "사후관리: 송금(투자)보고서는 송금 즉시, 외화증권(채권)취득보고서는 납입 후 6개월 이내, 투자금액 300만불 초과 시 연간사업실적보고서는 회계기간 종료 후 5개월 이내 [규정 제9-9조]."], ids:["규정 제9-5조", "규정 제9-9조", "시행령 제8조"] });
   };
   RULE.out_re = (q, x) => {
     const u = x.usd;
@@ -5212,7 +5234,7 @@ window.__LOCAL = true;
       basis:["거주자가 외국 부동산을 취득하려면 부동산취득신고(수리)서를 작성해 지정거래외국환은행에 신고하고 수리를 받아야 합니다 [규정 제9-39조].", "매매계약 확정 전 내신고수리를 받으면 취득예정금액의 100분의 10 이내에서 먼저 지급할 수 있고, 3개월 이내 신고수리를 받거나 회수해야 합니다 [규정 제9-39조]."],
       steps:["거래외국환은행 지정 여부를 확인합니다.", "부동산취득신고(수리)서와 매매계약서 등 첨부서류를 받아 심사·수리합니다.", "수리 후 취득대금을 송금하고, 취득 후 보고 의무를 안내합니다."],
       docs:["부동산취득신고(수리)서 (별지 제9-12호)", "부동산 매매계약서 (계약 전이면 취득 예정 내용을 입증하는 서류)", IDD, "그 밖에 지정거래외국환은행이 요구하는 서류"],
-      forms:["[별지 9-12]", "[서식 제1-2호]"], ids:["규정 제9-39조"] });
+      forms:["[별지 9-12]", "[서식 제1-2호]"], ids:["규정 제9-39조", "규정 제9-40조"], cautions:["취득 후 사후관리: 해외부동산취득보고서는 취득대금 송금 후 3개월 이내(분할 송금은 최종 송금 후 3개월 이내), 처분(변경)보고서는 처분·변경 후 3개월 이내 [규정 제9-40조]."] });
   };
   RULE.in_gen = (q, x) => {
     if (x.whoR === "frgn" || x.whoR === "nr") return R({ v:V("신고 불요", "신고예외 거래 (증빙서류 미제출 수령)", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제4-4조제4항", "불요", "건당 5천불 이내이거나, 신고가 필요 없는 거래로 외국에 있는 자기 자금을 들여오는 경우에는 증빙 없이 받을 수 있습니다."),
@@ -5239,8 +5261,15 @@ window.__LOCAL = true;
       docs:["지급수단등의 수출입(변경) 신고서 (별지 제6-2호, 세관 제출)", "수출입 사유나 원인 거래의 증빙서류"], forms:["[별지 6-2]"], ids:["규정 제6-3조", "규정 제5-11조", "규정 제6-2조"],
       more:u ? [] : ["금액을 입력하면 1만불 기준으로 바로 판정합니다."] });
   };
-  RULE.etc_net = (q, x) => {
+  RULE.etc_net = (q, x) => { const rt = _route(q); if (rt) return rt(q, x); return RULE.etc_net0(q, x); };
+  RULE.etc_net0 = (q, x) => {
     const u = x.usd;
+    if (/상계/.test(q) && /다자간|다수|여러\s*(회사|당사자|업체)|상계\s*센터|네팅|netting/i.test(q)) return R({ v:V("신고 필요", "한국은행 신고", "한국은행총재 (외국환은행 경유)", "상계 전 사전신고", "지정 불요", "③ 한국은행 신고", "규정 제5-4조제3항", "필요 — 한국은행 신고 사안", "여러 당사자의 채권·채무를 상계하거나 다국적기업 상계센터를 통해 상계하면 한국은행에 신고해야 합니다."),
+      concl:"다국적 기업의 상계센터를 통해 상계하거나 다수 당사자의 채권·채무를 상계(다자간 상계)하려면 한국은행총재에게 신고해야 합니다. 양자간 상계는 외국환은행 신고 또는 상계 후 1개월 이내 사후보고입니다.",
+      basis:["다국적 기업의 상계센터를 통하여 상계하거나 다수의 당사자의 채권 또는 채무를 상계하려면 한국은행총재에게 신고해야 합니다 [규정 제5-4조].", "다자간 상계는 한국은행 신고 대상입니다 [지침 p.72]."],
+      steps:["상계 당사자 수와 상계센터 이용 여부를 확인합니다.", "한국은행 신고 서류를 받아 외국환은행을 경유해 신고하도록 안내합니다.", "상계 관계 증빙서류는 5년간 보관하도록 안내합니다."],
+      docs:["지급등의 방법(변경) 신고서", "상계 대상 채권·채무를 입증하는 서류 (계약서·송장 등)", "상계 약정서"], ids:["규정 제5-4조", "지침 p.72"],
+      cautions:["상계를 실시하는 자는 관계 증빙서류를 5년간 보관해야 합니다 [규정 제5-4조]."] });
     if (/상계/.test(q)){
       if (u && u <= 5000) return R({ v:V("신고 불요", "신고예외 거래", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제5-4조제1항제1호", "불요", "일방의 금액이 5천불 이하인 상계는 신고가 필요 없습니다."), concl:"일방의 금액이 미화 5천불 이하인 채권·채무 상계는 신고가 필요 없습니다.", basis:["일방의 금액이 미화 5천불 이하인 채권 또는 채무를 상계하는 경우 신고를 요하지 않습니다 [규정 제5-4조]."], steps:["상계 금액을 확인합니다."], docs:["상계 내역을 확인할 수 있는 서류"], ids:["규정 제5-4조"] });
       return R({ v:V("신고 필요", "외국환은행 신고 (또는 상계 후 1개월 이내 사후보고)", "외국환은행의 장", "상계 전 신고 또는 상계처리 후 1개월 이내 사후보고", "지정 불요", "② 지정은행 확인", "규정 제5-4조제2항", "불요", "비거주자와의 채권·채무를 상계하려면 은행에 신고하거나 상계 후 1개월 안에 보고해야 합니다."),
@@ -5260,7 +5289,22 @@ window.__LOCAL = true;
       steps:["제3자 지급 예외 사유(해외부동산 중개인 지급, 수입대행 등)에 해당하는지 확인합니다.", "예외가 아니면 금액에 따라 신고기관을 정해 신고를 받습니다."],
       docs:["제3자 지급 신고서", "원인 거래 계약서 및 제3자 지급 사유를 입증하는 서류"], ids:["규정 제5-10조"] });
   };
-  RULE.out_trade = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "수입신고필증이나 계약서·송장 같은 증빙서류를 내시면 신고 없이 수입대금을 보낼 수 있습니다."),
+  const LONG = q => /1년\s*(을|이)?\s*(초과|넘|이상)|일\s*년\s*(초과|넘)/.test(q) && /선급|선수|미리|먼저|사전|선지급|선수령|선적\s*전|수령\s*전/.test(q);
+  RULE.long = (q, x) => { const u = x.usd, big = !u || u > 1e5, imp = !/수출|선수금|선수령|수령/.test(q) || /수입/.test(q);
+    return R({ v:big ? V(u ? "신고 필요" : "확인 필요", "한국은행 신고", "한국은행총재 (외국환은행 경유)", "지급(수령) 전 사전신고 (불가피한 사유는 1년 초과일부터 3개월 이내 사후신고)", "지정 불요", u ? "③ 한국은행 신고" : "확인 필요", "규정 제5-8조제1항", "필요 — 한국은행 신고 사안", "계약건당 10만불을 넘는 수출입대금을 1년 넘게 미리 받거나 보내면 한국은행에 신고해야 합니다.")
+      : V("신고 불요", "신고예외 거래 (계약건당 10만불 이하)", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제5-8조제1항", "불요", "계약건당 10만불 이하라면 1년을 넘는 선지급·선수령도 한국은행 신고 대상이 아닙니다."),
+      concl:`${imp ? "계약건당 미화 10만불을 넘는 수입대금을 선적서류나 물품 수령 1년 전을 넘겨 미리 지급" : "계약건당 미화 10만불을 넘는 수출대금을 물품 선적 1년 전을 넘겨 미리 수령"}하려면 한국은행총재에게 신고해야 합니다. 선박·철도차량·항공기·산업설비는 신고하지 않습니다.` + (u ? ` 이번 계약 금액은 ${U(u)}입니다.` : " 계약 금액을 확인하세요."),
+      basis:["계약건당 미화 10만불을 초과하는 수출대금을 선적 전 1년을 초과해 수령하거나, 수입대금을 선적서류·물품 수령 전 1년을 초과해 지급하려면 한국은행총재에게 신고해야 합니다 [규정 제5-8조].", "상대방 귀책 등 불가피한 사유가 있으면 1년을 초과한 날부터 3개월 이내 사후신고할 수 있습니다 [규정 제5-8조]."],
+      steps:["계약 건당 금액과 선적(물품 수령) 예정일을 확인합니다.", "1년을 넘는 선지급·선수령이고 10만불을 넘으면 한국은행 신고를 안내합니다.", "선박·철도차량·항공기·산업설비 수출입인지 확인합니다(신고 제외)."],
+      docs:["지급등의 방법(변경) 신고서 (한국은행 신고 시)", "수출입 계약서", "선적(물품 수령) 예정일을 확인할 수 있는 서류"], ids:["규정 제5-8조"] }); };
+  RULE.nobank = (q, x) => R({ v:V("신고 필요", "한국은행 신고", "한국은행총재", "지급 전 사전신고", "지정 불요", "③ 한국은행 신고", "규정 제5-11조제3항", "필요 — 신고 예외(규정 제5-11조제1항) 해당 여부 확인", "은행을 거치지 않고 직접 주고받는 지급은 규정이 정한 예외가 아니면 한국은행에 신고해야 합니다."),
+    concl:"거주자가 외국환은행을 통하지 않고 지급등을 하는 경우(물품·용역 제공이나 권리 이전으로 결제하는 경우 포함)에는 규정 제5-11조제1항의 예외에 해당하지 않으면 한국은행총재에게 신고해야 합니다.",
+    basis:["규정이 정한 예외를 제외하고 거주자가 외국환은행을 통하지 않고 지급등을 하려면 한국은행총재에게 신고해야 합니다 [규정 제5-11조].", "해외여행경비·해외이주비를 외국에서 직접 지급하는 경우 등은 신고 예외입니다 [규정 제5-11조]."],
+    steps:["예외 사유(해외여행경비 직접 지급, 송금수표 지급 등)에 해당하는지 확인합니다.", "해당하지 않으면 한국은행 신고를 안내합니다."], docs:["지급등의 방법(변경) 신고서", "원인 거래 증빙서류"], ids:["규정 제5-11조"] });
+  const _route = q => LONG(q) ? RULE.long : /은행을\s*(통하지|거치지)\s*않|은행\s*없이|직접\s*(현금|현찰)으로\s*(지급|전달|주)/.test(q) ? RULE.nobank : null;
+  RULE.out_trade = (q, x) => (_route(q) || RULE.out_trade0)(q, x);
+  RULE.in_trade = (q, x) => (_route(q) || RULE.in_trade0)(q, x);
+  RULE.out_trade0 = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "수입신고필증이나 계약서·송장 같은 증빙서류를 내시면 신고 없이 수입대금을 보낼 수 있습니다."),
     concl:"수입대금 지급은 지급등의 증빙서류(수입신고필증, 계약서·송장 등)를 내고 은행 확인을 받아 지급합니다(신고 불요). 제3자 지급이나 상계 같은 방법을 쓰면 별도 신고 여부를 확인해야 합니다.",
     basis:["지급등을 하려는 자는 지급 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "선적서류나 물품 수령 후 지급하는 경우 통관방식은 수입신고필증으로, 무통관방식은 계약서·송장 등으로 내용을 확인합니다 [지침 p.52]."],
     steps:["통관 여부를 확인해 수입신고필증 또는 계약서·송장을 받습니다.", "수취인이 계약 상대방인지(제3자 지급 아닌지) 확인합니다.", "지급신청서를 받아 송금합니다."],
@@ -5271,7 +5315,7 @@ window.__LOCAL = true;
     basis:["지급등을 하려는 자는 지급 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "신고가 필요 없는 거래로 연간 누계 미화 10만불 이내이면 증빙서류 없이 지급할 수 있습니다 [규정 제4-3조]."],
     steps:["계약서와 대금청구서로 거래 내용과 금액을 확인합니다.", "원천징수 대상 소득이면 세금 처리 여부를 안내합니다.", "지급신청서를 받아 송금합니다."],
     docs:[APP, "용역·라이선스 계약서", "대금청구서(Invoice)", IDD], forms:["[서식 제3-1호]"], ids:["규정 제4-2조", "규정 제4-3조"] });
-  RULE.in_trade = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "수출신고필증이나 계약서 같은 서류로 수출대금임을 확인하면 신고 없이 받을 수 있습니다."),
+  RULE.in_trade0 = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "수출신고필증이나 계약서 같은 서류로 수출대금임을 확인하면 신고 없이 받을 수 있습니다."),
     concl:"수출대금 수령은 수출 거래를 입증하는 서류로 확인한 뒤 받습니다(신고 불요). 건당 미화 5천불 이내이거나 신고가 필요 없는 수령은 증빙서류 없이 받을 수 있습니다.",
     basis:["지급등을 하려는 자는 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "건당 5천불 이내 또는 신고를 요하지 않는 수령은 증빙 없이 할 수 있고, 동일자·동일인 10만불을 넘으면 서면으로 수령사유를 확인받습니다 [규정 제4-3조]."],
     steps:["수출신고필증·계약서 등으로 수출대금인지 확인합니다.", "송금인이 계약 상대방이 아니면 제3자 수령 해당 여부를 확인합니다."], docs:["수출신고필증 또는 수출계약서·송장", IDD], forms:[], ids:["규정 제4-2조", "규정 제4-3조"] });
@@ -5325,9 +5369,17 @@ window.__LOCAL = true;
     const t = TYPES.find(x => x.n === ty.trim()) || guessType(q);
     return { t, q, facts };
   }
+  const KB = [
+    { re:/거주자|비거주자|거주성|영주권|해외\s*체재|외국인거주자/, ids:["시행령 제10조", "지침 p.25"], a:"**거주자·비거주자 판단 기준** (외국환거래법 제3조, 시행령 제10조)\n- 대한민국 국민: 원칙적으로 거주자입니다. 다만 외국에서 영업활동에 종사하는 자, 외국의 국제기구 근무자, **2년 이상 외국에 체재하는 자**는 비거주자입니다(일시 귀국해 3개월 이내 머문 기간은 2년에 포함) [시행령 제10조].\n- 비거주자였던 국민이 입국해 **3개월 이상** 국내에 체재하면 거주자입니다 [시행령 제10조].\n- 외국인: 국내에서 영업활동에 종사하거나 **6개월 이상** 국내에 체재하면 거주자(외국인거주자)입니다. 외교관·국제기구 근무자 등은 제외합니다. 거주자였던 외국인이 출국해 외국에서 3개월 이상 체재하면 비거주자입니다 [시행령 제10조].\n- 생계를 주로 함께하는 동거 가족은 그 사람의 구분을 따릅니다 [시행령 제10조].\n- 외국인의 국내 거주기간은 여권 또는 출입국사실증명서의 입국일자로 산정합니다 [지침 p.25].\n- 영주권 자체가 기준은 아니고, 체재 기간·영업 여부로 판단합니다." },
+    { re:/제3자|상계|기간\s*초과|1년\s*(초과|넘)|은행을\s*통하지|지급\s*방법|결제\s*방법|상호계산/, ids:["규정 제5-10조", "규정 제5-4조", "규정 제5-8조", "규정 제5-11조", "규정 제5-5조"], a:"**비전형적 결제방법 신고 기준** (외국환거래규정 제5장)\n- **제3자 지급등**: 미화 5천불 이하 신고 불요, 5천불 초과 1만불 이내 외국환은행 신고, 그 외 한국은행 신고. 나눠서 지급하면 합산합니다 [규정 제5-10조].\n- **상계**: 일방 금액 5천불 이하 등은 신고 불요. 양자간 상계는 외국환은행 신고 또는 상계 후 1개월 이내 사후보고, 다국적기업 상계센터·다수 당사자 상계(다자간)는 한국은행 신고 [규정 제5-4조].\n- **상호계산**: 지정거래외국환은행에 상호계산신고서 제출 [규정 제5-5조].\n- **기간 초과 지급등**: 계약건당 10만불 초과 수출대금을 선적 1년 전을 넘겨 수령하거나, 수입대금을 수령 1년 전을 넘겨 지급하면 한국은행 신고 [규정 제5-8조].\n- **외국환은행을 통하지 않는 지급등**: 규정이 정한 예외가 아니면 한국은행 신고 [규정 제5-11조]." },
+    { re:/자본거래|해외직접투자|현지법인|해외부동산|재산\s*반출|신고\s*기관|사후\s*관리|취득\s*보고/, ids:["시행령 제8조", "규정 제9-5조", "규정 제9-9조", "규정 제9-39조", "규정 제9-40조", "규정 제4-4조"], a:"**주요 자본거래 신고기관과 사후관리**\n- **해외직접투자**(외국법인 지분 10% 이상, 또는 10% 미만이라도 임원 파견 등 관계 수립) [시행령 제8조]: 주채권은행 → 여신최다은행 → 거주자가 지정하는 은행에 사전신고 [규정 제9-5조]. 송금(투자)보고서는 송금 즉시, 외화증권(채권)취득보고서는 납입 후 6개월 이내 [규정 제9-9조].\n- **해외부동산 취득**: 지정거래외국환은행에 사전 신고수리 [규정 제9-39조]. 취득보고서는 취득대금 송금 후 3개월 이내 [규정 제9-40조].\n- **재외동포 국내재산 반출**: 관할세무서장이 발급한 부동산매각자금확인서·자금출처확인서 범위 안에서 지정거래외국환은행을 통해 지급(별도 신고는 없고 은행이 확인) [규정 제4-4조]." },
+    { re:/ORIS|무증빙|증빙\s*없|10만\s*불|분할|스머핑|쪼개|나눠/, ids:["규정 제4-3조", "지침 p.38", "규정 제5-10조"], a:"**ORIS 한도와 분할 송금 점검**\n- 지급증빙서류 없이 보내는 송금은 연간 누계 미화 10만불까지이며, 모든 외국환업무취급기관등을 통한 지급을 합산합니다 [규정 제4-3조]. 한도는 한국은행 해외송금 통합관리시스템(ORIS)으로 관리하므로 창구에서 반드시 조회하세요 [지침 p.38].\n- 10만불을 넘으면 건당 5천불 이내이거나, 거래 내용과 금액을 서류로 확인한 경우에만 보낼 수 있습니다 [규정 제4-3조].\n- 같은 사람이나 가족·관련자가 5천불·1만불 바로 아래 금액으로 여러 번 나눠 보내는 경우 규정 회피성 분할 송금인지 점검하세요. 규정은 분할한 지급을 합산해 판단합니다 [규정 제5-10조]." }
+  ];
   function chatAnswer(q){
     const t = guessType(q), hits = search(q, 4);
     let out = "";
+    const kb = KB.filter(k => k.re.test(q)).slice(0, 2);
+    if (kb.length){ out += kb.map(k => k.a).join("\n\n") + "\n\n"; kb.forEach(k => k.ids.forEach(i => { try { if (agRefs && byId[i]) agRefs.add(i); } catch {} })); }
     const kwHit = t && t.kw && t.kw.split(/\s+/).filter(w => w.length >= 2 && q.includes(w)).length >= 2;
     if (kwHit && RULE[t.k]){
       const r = RULE[t.k](q, { t, who:whoOf(q, {}), usd:usdOf(q, {}), acc:/누계|이미/.test(q) });
@@ -5372,6 +5424,22 @@ window.__LOCAL = true;
       throw Object.assign(new Error("local"), { code:"local_unsupported" });
     }
   };
+})();
+
+/* ---------- 웹: Claude 버튼은 Claude 버전(심층 검토) 열기 ---------- */
+(function(){
+  const lab = () => { const t = $("#claudeBtnT"); if (t) t.textContent = "Claude 심층 검토"; };
+  claudeBtnSync = lab; lab();
+  const open = which => {
+    let q = "";
+    if (which === "ask") q = ($("#qbox").value || "").trim();
+    else if (which === "chat") q = ($("#chatQ").value || "").trim();
+    toClaude(q, t => { toast(q ? t : "Claude 버전을 열었습니다. Claude에 로그인한 상태로 질의하면 AI가 심층 검토합니다.", 6000); });
+  };
+  $("#claudeBtn").onclick = () => open("ask");
+  const mc = $("#mClaude"); if (mc) mc.onclick = () => open("ask");
+  document.addEventListener("click", e => { const b = e.target.closest("[data-claude-deep]"); if (b) open(b.dataset.claudeDeep); });
+  const sh = document.querySelector('#mSheet [data-ms="claude"]'); if (sh) sh.innerHTML = '<i aria-hidden="true">🤖</i>Claude 심층 검토';
 })();
 /* ---------- 화면 밝기 ---------- */
 (function(){
