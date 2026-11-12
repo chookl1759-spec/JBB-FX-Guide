@@ -5766,12 +5766,23 @@ window.__LOCAL = true;
 
 /* ---------- 직원 피드백 제보 ---------- */
 let FB_IMG = "";
+const FBS = window.__WEB ? {
+  ok: () => !!window.fxSb,
+  add: async row => { const r = await fxSb().from("fx_feedback").insert(row); if (r.error) throw r.error; },
+  list: async () => { const r = await fxSb().from("fx_feedback").select("*").order("created_at", { ascending:false }).limit(300); if (r.error) throw r.error; return r.data || []; },
+  del: async id => { const r = await fxSb().from("fx_feedback").delete().eq("id", id); if (r.error) throw r.error; }
+} : {
+  ok: () => true,
+  add: async row => { const d = await claude.use("db"), u = await claude.use("user"); if (!d || !u) throw new Error("db"); const uid = await u.id(), ref = d.doc("feedback/" + uid), s = await ref.get(); const items = ((s.exists && s.data()) || {}).items || []; items.push({ id:"f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), created_at:new Date().toISOString(), ...row }); await ref.set({ items:items.slice(-20) }); },
+  list: async () => { const d = await claude.use("db"); const s = await d.collection("feedback").limit(500).get(); const out = []; s.docs.forEach(x => ((x.data() || {}).items || []).forEach(it => out.push(it))); return out.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); },
+  del: async id => { const d = await claude.use("db"); const s = await d.collection("feedback").limit(500).get(); for (const x of s.docs){ const it = (x.data() || {}).items || []; if (it.some(i => i.id === id)){ await d.doc("feedback/" + x.id).set({ items:it.filter(i => i.id !== id) }); return; } } }
+};
 function fbShrink(file){
   return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => { const im = new Image(); im.onload = () => {
     const k = Math.min(1, 1400 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
     c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); let q = .8, out = c.toDataURL("image/jpeg", q);
-    while (out.length > 900000 && q > .35){ q -= .1; out = c.toDataURL("image/jpeg", q); }
-    out.length > 1400000 ? rej(new Error("big")) : res(out); }; im.onerror = rej; im.src = fr.result; }; fr.onerror = rej; fr.readAsDataURL(file); });
+    while (out.length > (window.__WEB ? 900000 : 280000) && q > .3){ q -= .1; out = c.toDataURL("image/jpeg", q); }
+    out.length > (window.__WEB ? 1400000 : 400000) ? rej(new Error("big")) : res(out); }; im.onerror = rej; im.src = fr.result; }; fr.onerror = rej; fr.readAsDataURL(file); });
 }
 function fbOpen(query, answer){
   let d = document.getElementById("fbDlg");
@@ -5792,11 +5803,11 @@ function fbOpen(query, answer){
     d.querySelector("[data-x]").onclick = () => d.classList.add("hidden");
     f.onsubmit = async ev => {
       ev.preventDefault(); const c = f.c.value.trim(); if (c.length < 2){ st.textContent = "수정 요청 내용을 적어 주세요."; return; }
-      if (!window.fxSb){ st.textContent = "지금은 제보를 저장할 수 없습니다."; return; }
+      if (!FBS.ok()){ st.textContent = "지금은 제보를 저장할 수 없습니다."; return; }
       st.textContent = "저장 중…"; f.querySelector("[type=submit]").disabled = true;
       try {
-        const me = window.FX_ME || {}, row = { empno: me.empno || String(me.email || "").split("@")[0] || "", query: maskPII(f.q.value).text, current_answer: f.a.value, correction: maskPII(c).text, image_url: FB_IMG || null };
-        const r = await fxSb().from("fx_feedback").insert(row); if (r.error) throw r.error;
+        const me = window.FX_ME || {}, row = { empno: me.empno || String(me.email || "").split("@")[0] || me.name || "", query: maskPII(f.q.value).text, current_answer: f.a.value, correction: maskPII(c).text, image_url: FB_IMG || null };
+        await FBS.add(row);
         st.textContent = ""; d.classList.add("hidden"); toast("제보를 접수했습니다. 고맙습니다!", 3500);
       } catch (e){ st.textContent = /relation|does not exist|schema cache/i.test(e && e.message || "") ? "피드백 저장소가 아직 준비되지 않았습니다(관리자 SQL 실행 필요)." : "저장하지 못했습니다. 잠시 뒤 다시 시도하세요."; }
       finally { f.querySelector("[type=submit]").disabled = false; }
@@ -5820,12 +5831,11 @@ function fbPrompt(rows){
     + rows.map(r => `   - 질문: ${String(r.query || "").replace(/\s+/g, " ").trim()} | 직원 수정의견: ${String(r.correction || "").replace(/\s+/g, " ").trim()}`).join("\n");
 }
 async function fbLoad(){
-  const host = $("#fbList"), st = $("#fbSt"); if (!host || !window.fxSb) return;
+  const host = $("#fbList"), st = $("#fbSt"); if (!host || !FBS.ok()) return;
   st.textContent = "불러오는 중…";
   try {
-    const r = await fxSb().from("fx_feedback").select("*").order("created_at", { ascending:false }).limit(300); if (r.error) throw r.error;
-    FB_ROWS = r.data || []; st.textContent = `${FB_ROWS.length}건`;
-    host.innerHTML = FB_ROWS.length ? `<table class="fbl"><thead><tr><th>일시</th><th>사번</th><th>질문</th><th>수정 요청</th><th>첨부</th><th></th></tr></thead><tbody>` + FB_ROWS.map(x => `<tr><td>${esc(kstFull(x.created_at))}</td><td>${esc(x.empno || "-")}${(window.FX_STAFF || {})[x.empno] ? `<div class="hint">${esc(FX_STAFF[x.empno])}</div>` : ""}</td><td>${esc(String(x.query || "").slice(0, 200))}<details><summary class="hint">당시 답변</summary><div class="hint" style="white-space:pre-wrap;max-height:220px;overflow:auto">${esc(String(x.current_answer || "").replace(/<<\/?판정>>|<<\/?요약>>/g, "").slice(0, 3000))}</div></details></td><td class="c">${esc(x.correction || "")}</td><td>${x.image_url && /^data:image\//.test(x.image_url) ? `<img src="${x.image_url}" alt="첨부 캡처" data-fbimg>` : "-"}</td><td><button class="btn ghost sm" type="button" data-fbdel="${esc(x.id)}">처리 완료(삭제)</button></td></tr>`).join("") + `</tbody></table>` : '<p class="hint">아직 접수된 피드백이 없습니다.</p>';
+    FB_ROWS = await FBS.list(); st.textContent = `${FB_ROWS.length}건`;
+    host.innerHTML = FB_ROWS.length ? `<table class="fbl"><thead><tr><th>일시</th><th>${window.__WEB ? "사번" : "작성자"}</th><th>질문</th><th>수정 요청</th><th>첨부</th><th></th></tr></thead><tbody>` + FB_ROWS.map(x => `<tr><td>${esc(kstFull(x.created_at))}</td><td>${esc(x.empno || "-")}${(window.FX_STAFF || {})[x.empno] ? `<div class="hint">${esc(FX_STAFF[x.empno])}</div>` : ""}</td><td>${esc(String(x.query || "").slice(0, 200))}<details><summary class="hint">당시 답변</summary><div class="hint" style="white-space:pre-wrap;max-height:220px;overflow:auto">${esc(String(x.current_answer || "").replace(/<<\/?판정>>|<<\/?요약>>/g, "").slice(0, 3000))}</div></details></td><td class="c">${esc(x.correction || "")}</td><td>${x.image_url && /^data:image\//.test(x.image_url) ? `<img src="${x.image_url}" alt="첨부 캡처" data-fbimg>` : "-"}</td><td><button class="btn ghost sm" type="button" data-fbdel="${esc(x.id)}">처리 완료(삭제)</button></td></tr>`).join("") + `</tbody></table>` : '<p class="hint">아직 접수된 피드백이 없습니다.</p>';
   } catch (e){ st.textContent = /relation|does not exist|schema cache/i.test(e && e.message || "") ? "피드백 표가 아직 없습니다. Supabase에서 피드백 SQL을 실행해 주세요." : "불러오지 못했습니다. (관리자 계정으로 로그인했는지 확인하세요)"; host.innerHTML = ""; }
 }
 function admExtras(){
@@ -5834,6 +5844,7 @@ function admExtras(){
     <p class="hint">직원들이 답변 아래 「피드백 / 오류 제보」로 보낸 내용입니다. 프롬프트를 복사해 Claude에 붙여 넣으면 판정 기준과 지식베이스 수정을 요청할 수 있습니다. 반영을 마친 건은 「처리 완료」로 지우세요.</p>
     <div class="status" id="fbSt"></div><textarea class="field hidden" id="fbPromptOut" rows="8" style="width:100%;margin:8px 0" readonly></textarea><div id="fbList"></div></section>`);
   $("#fbReload").onclick = fbLoad;
+  window.addEventListener("hashchange", () => { if (location.hash === "#admin") fbLoad(); });
   $("#fbPromptBtn").onclick = async () => {
     if (!FB_ROWS.length) await fbLoad();
     if (!FB_ROWS.length){ toast("접수된 피드백이 없습니다."); return; }
@@ -5843,7 +5854,7 @@ function admExtras(){
   $("#fbList").addEventListener("click", async e => {
     const im = e.target.closest("[data-fbimg]"); if (im){ const w = window.open(""); if (w) w.document.write(`<img src="${im.src}" style="max-width:100%">`); return; }
     const del = e.target.closest("[data-fbdel]"); if (!del || !confirm("이 피드백을 처리 완료로 삭제할까요?")) return;
-    try { const r = await fxSb().from("fx_feedback").delete().eq("id", del.dataset.fbdel); if (r.error) throw r.error; fbLoad(); } catch { toast("삭제하지 못했습니다."); }
+    try { await FBS.del(del.dataset.fbdel); fbLoad(); } catch { toast("삭제하지 못했습니다."); }
   });
   fbLoad();
 }
