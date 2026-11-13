@@ -2616,6 +2616,19 @@ body{padding-bottom:34px}
 .fbl img{max-width:120px;max-height:80px;border-radius:8px;border:1px solid var(--t-line);cursor:zoom-in}
 .tt-tbl{width:100%;border-collapse:collapse;font-size:13px}.tt-tbl td,.tt-tbl th{padding:5px 4px;border-bottom:1px solid var(--t-line);text-align:left}.tt-tbl input{width:100%;min-height:36px!important;font-size:13px!important;padding:4px 8px}
 @media (max-width:768px){.fbl thead{display:none}.fbl tr{display:block;border:1px solid var(--t-line);border-radius:14px;margin:0 0 10px;padding:8px 10px}.fbl td{display:block;border:0;padding:3px 0}.tt-tbl th:first-child{width:38%}}
+
+/* ===== 11차: 관리자 이용자 필터 ===== */
+.adm-tools{display:flex;flex-direction:column;gap:10px;margin:12px 0 12px;padding:12px 14px;border:1px solid var(--t-line);border-radius:16px;background:var(--surface-2)}
+.adm-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.adm-row > span.lb{font-size:12.5px;font-weight:700;color:var(--t-cap);min-width:56px}
+.af-chip{border:1px solid var(--t-line);background:var(--surface);color:var(--t-body);border-radius:999px;padding:6px 14px;min-height:36px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;letter-spacing:-0.02em}
+.af-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.af-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.adm-search{flex:1;min-width:200px;min-height:40px;border-radius:999px!important;padding:0 16px!important;font-size:14px}
+.adm-sort{min-height:40px;border-radius:999px!important;padding:0 14px!important;font-size:13.5px}
+#admCount{font-size:12.5px;color:var(--t-cap);margin-left:auto}
+@media (max-width:768px){.af-chip{min-height:44px;padding:0 16px}.adm-search,.adm-sort{min-height:48px;width:100%}.adm-row > span.lb{min-width:100%}#admCount{margin-left:0}}
+.tab-top [data-reset]{border-radius:999px!important;font-weight:700}
 </style>
 <style id="sheetCss"></style>
 </head>
@@ -5058,9 +5071,9 @@ const RESETS = {
 const TAB_TITLE = { home:"외환 업무 대시보드", chat:"외환 실무 Q&A", ask:"AI 거래 검토", cases:"검토 내역", calc:"한도 계산", forms:"서식함", src:"원문 검색", info:"기준 법령", admin:"관리" };
 for (const [k, title] of Object.entries(TAB_TITLE)){
   const w = $("#tab-" + k); if (!w) continue;
-  w.insertAdjacentHTML("afterbegin", `<div class="tab-top"><h1${k === "home" ? ` data-day="${TODAY.replace(/-/g, ".")} 기준"` : ""}>${title}</h1>${RESETS[k] ? `<button class="btn ghost sm" type="button" data-reset="${k}">↺ 입력 초기화</button>` : ""}</div>`);
+  w.insertAdjacentHTML("afterbegin", `<div class="tab-top"><h1${k === "home" ? ` data-day="${TODAY.replace(/-/g, ".")} 기준"` : ""}>${title}</h1>${RESETS[k] ? `<button class="btn ghost sm" type="button" data-reset="${k}">↺ 초기화</button>` : ""}</div>`);
 }
-document.addEventListener("click", e => { const b = e.target.closest("[data-reset]"); if (!b) return; RESETS[b.dataset.reset](); b.textContent = "초기화했습니다"; setTimeout(() => { b.textContent = "↺ 입력 초기화"; }, 1500); });
+document.addEventListener("click", e => { const b = e.target.closest("[data-reset]"); if (!b) return; RESETS[b.dataset.reset](); b.textContent = "초기화했습니다"; setTimeout(() => { b.textContent = "↺ 초기화"; }, 1500); });
 
 /* ---------- 추가 확인 사항 입력 후 심층 재검토 ---------- */
 function moreItems(answer){
@@ -5152,11 +5165,12 @@ function admRender(){
   const ids = new Set([...Object.keys(ADM_USERS), ...Object.keys(ADM_BLOCK), ...allCases().map(c => c.author).filter(Boolean)]);
   const m0 = TODAY.slice(0, 7);
   const rows = [...ids].map(id => { const u = ADM_USERS[id] || {}, cs = allCases().filter(c => c.author === id);
-    const label = u.name || (u.empno ? "행번 " + u.empno : "") || String(u.email || "").split("@")[0] || (cs.some(c => c.src === "claude") ? "Claude 버전 검토 기록" : "") || "이름 미등록"; return { id, label, emp:u.empno || "", first:u.firstSeenAt || u.firstSeen || "", last:u.lastSeenAt || u.lastSeen || "", n:cs.length, nm:cs.filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, lastRev:cs.length ? kstStamp(Math.max(...cs.map(c => c.createdMs || 0))) : "", blocked:!!ADM_BLOCK[id], why:(ADM_BLOCK[id] || {}).reason || "" }; })
+    const label = (u.name ? u.name + (u.title && !/님$/.test(u.name) ? " " + u.title : "") : "") || (u.empno ? "행번 " + u.empno : "") || String(u.email || "").split("@")[0] || (cs.some(c => c.src === "claude") ? "Claude 버전 검토 기록" : "") || "이름 미등록"; return { id, label, emp:u.empno || "", first:u.firstSeenAt || u.firstSeen || "", last:u.lastSeenAt || u.lastSeen || "", n:cs.length, nm:cs.filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, lastRev:cs.length ? kstStamp(Math.max(...cs.map(c => c.createdMs || 0))) : "", blocked:!!ADM_BLOCK[id], why:(ADM_BLOCK[id] || {}).reason || "" }; })
     .sort((a, b) => (b.last || b.lastRev).localeCompare(a.last || a.lastRev));
   const act = rows.filter(r => !r.blocked).length;
   $("#admStats").innerHTML = [["전체 이용자", rows.length, ""], ["이용 중", act, "ok"], ["차단", rows.length - act, "warn"], ["이번 달 검토", allCases().filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, ""]].map(([k, v, cl]) => `<div class="st ${cl}"><span>${k}</span><b>${v}</b></div>`).join("");
-  host.innerHTML = rows.length ? `<div class="ctable-wrap"><table class="ctable adm"><thead><tr><th>이용자</th><th>처음 사용</th><th>마지막 사용</th><th>검토 건수</th><th>이번 달</th><th>최근 검토일</th><th>상태</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><b data-uid="${esc(r.id)}" data-fb="${esc(r.label)}">${esc(r.label)}</b>${r.emp ? `<div class="hint">행번 ${esc(r.emp)}</div>` : ""}</td><td>${esc(r.first || "-")}</td><td>${esc(r.last || "-")}</td><td>${r.n}</td><td>${r.nm}</td><td>${esc(r.lastRev || "-")}</td><td>${r.id === me ? '<span class="pill v-info">소유자</span>' : r.blocked ? `<span class="pill v-crit">차단</span>${r.why ? `<div class="hint">${esc(r.why)}</div>` : ""}` : '<span class="pill v-ok">이용 중</span>'}</td><td>${r.id === me ? "" : r.blocked ? `<button class="btn ghost sm" type="button" data-unblock="${esc(r.id)}">차단 해제</button>` : `<button class="btn ghost sm" type="button" data-block="${esc(r.id)}">차단</button>`}</td></tr>`).join("")}</tbody></table></div>` : '<p class="hint">아직 기록된 이용자가 없습니다. 직원이 페이지를 열면 여기에 나타납니다.</p>';
+  const view = admFilter(rows); const cnt = $("#admCount"); if (cnt) cnt.textContent = `${view.length}명 표시 · 전체 ${rows.length}명`;
+  host.innerHTML = view.length ? `<div class="ctable-wrap"><table class="ctable adm"><thead><tr><th>이용자</th><th>처음 사용</th><th>마지막 사용</th><th>검토 건수</th><th>이번 달</th><th>최근 검토일</th><th>상태</th><th></th></tr></thead><tbody>${view.map(r => `<tr><td><b data-uid="${esc(r.id)}" data-fb="${esc(r.label)}">${esc(r.label)}</b>${r.emp ? `<div class="hint">행번 ${esc(r.emp)}</div>` : ""}</td><td>${esc(r.first || "-")}</td><td>${esc(r.last || "-")}</td><td>${r.n}</td><td>${r.nm}</td><td>${esc(r.lastRev || "-")}</td><td>${r.id === me ? '<span class="pill v-info">소유자</span>' : r.blocked ? `<span class="pill v-crit">차단</span>${r.why ? `<div class="hint">${esc(r.why)}</div>` : ""}` : '<span class="pill v-ok">이용 중</span>'}</td><td>${r.id === me ? "" : r.blocked ? `<button class="btn ghost sm" type="button" data-unblock="${esc(r.id)}">차단 해제</button>` : `<button class="btn ghost sm" type="button" data-block="${esc(r.id)}">차단</button>`}</td></tr>`).join("")}</tbody></table></div>` : (rows.length ? '<p class="hint">조건에 맞는 이용자가 없습니다. 필터를 바꿔 보세요.</p>' : '<p class="hint">아직 기록된 이용자가 없습니다. 직원이 페이지를 열면 여기에 나타납니다.</p>');
   fillNames(host);
 }
 async function admBlock(id, on, b){
@@ -5861,6 +5875,68 @@ function admExtras(){
 (async () => {
   for (let i = 0; i < 60 && window.__owner === undefined; i++) await new Promise(r => setTimeout(r, 250));
   if (window.__owner) admExtras();
+})();
+
+/* ---------- 관리자 이용자 필터·정렬·검색 ---------- */
+const ADMF = { period:"all", act:"all", sort:"recent", q:"" };
+function admLastAct(r){ const a = String(r.last || ""), b = String(r.lastRev || ""); return a > b ? a : b; }
+function kstShift(days){ return new Date(Date.parse(TODAY + "T00:00:00Z") - days * 864e5).toISOString().slice(0, 10); }
+function admFilter(rows){
+  let v = rows.slice();
+  if (ADMF.period !== "all"){
+    const from = ADMF.period === "today" ? TODAY : ADMF.period === "3d" ? kstShift(2) : kstShift(6);
+    v = v.filter(r => admLastAct(r).slice(0, 10) >= from);
+  }
+  if (ADMF.act === "used") v = v.filter(r => r.n > 0); else if (ADMF.act === "none") v = v.filter(r => !r.n);
+  const q = ADMF.q.trim().toLowerCase();
+  if (q) v = v.filter(r => (/^\d+$/.test(q) ? String(r.emp || "").includes(q) : false) || String(r.label || "").toLowerCase().includes(q) || String(r.emp || "").includes(q));
+  const rec = (a, b) => admLastAct(b).localeCompare(admLastAct(a));
+  if (ADMF.sort === "count") v.sort((a, b) => b.n - a.n || rec(a, b));
+  else if (ADMF.sort === "emp") v.sort((a, b) => (a.emp ? 0 : 1) - (b.emp ? 0 : 1) || String(a.emp).localeCompare(String(b.emp)) || String(a.label).localeCompare(String(b.label), "ko"));
+  else v.sort(rec);
+  return v;
+}
+(function(){
+  const host = document.getElementById("admBody"); if (!host) return;
+  const chips = (key, items) => items.map(([v, l]) => `<button type="button" class="af-chip${ADMF[key] === v ? " on" : ""}" data-af="${key}" data-v="${v}" aria-pressed="${ADMF[key] === v}">${l}</button>`).join("");
+  host.insertAdjacentHTML("beforebegin", `<div class="adm-tools" id="admTools" aria-label="이용자 필터">
+    <div class="adm-row"><input class="field adm-search" id="admQ" type="search" inputmode="search" placeholder="사번(6자리) 또는 이름으로 검색" autocomplete="off" aria-label="사번 또는 이름 검색">
+      <select class="field adm-sort" id="admSort" aria-label="정렬"><option value="recent">최근 로그인 순</option><option value="count">검토 건수 많은 순</option><option value="emp">사번 오름차순</option></select></div>
+    <div class="adm-row"><span class="lb">기간</span>${chips("period", [["all", "전체"], ["today", "오늘"], ["3d", "최근 3일 이내"], ["7d", "최근 7일 이내"]])}</div>
+    <div class="adm-row"><span class="lb">활동</span>${chips("act", [["all", "전체"], ["used", "검토 1회 이상"], ["none", "미이용자"]])}<span id="admCount"></span></div></div>`);
+  const tools = document.getElementById("admTools");
+  tools.addEventListener("click", e => { const b = e.target.closest("[data-af]"); if (!b) return; ADMF[b.dataset.af] = b.dataset.v;
+    tools.querySelectorAll(`[data-af="${b.dataset.af}"]`).forEach(x => { const on = x.dataset.v === ADMF[b.dataset.af]; x.classList.toggle("on", on); x.setAttribute("aria-pressed", on); }); admRender(); });
+  document.getElementById("admQ").addEventListener("input", e => { ADMF.q = e.target.value; admRender(); });
+  document.getElementById("admSort").addEventListener("change", e => { ADMF.sort = e.target.value; admRender(); });
+})();
+
+/* ---------- AI 검토·실무 Q&A: 다른 메뉴로 나가면 입력창 초기화 ---------- */
+function fxRefillStaff(){
+  const m = window.FX_ME || {}, sf = document.getElementById("staffName"); if (!sf) return;
+  sf.value = m.name && !/님$/.test(m.name) ? m.name + (m.title ? " " + m.title : "") : "";
+}
+function softResetAsk(){
+  if (busy){ $("#qbox").value = ""; return; }   // 검토 중이면 진행 중인 검토는 그대로 둠
+  resFacts.payer = resFacts.payee = ""; renderResNote(); clearAttach("ask"); turns = [];
+  $("#qbox").value = ""; $("#amt").value = ""; $("#acc").checked = false; $("#custName").value = "";
+  PARTY.payer = PARTY.payee = ""; $("#payeeCountry").value = ""; $("#payeeRel").value = ""; renderParties();
+  curType = TYPES[0]; renderTypes(); $("#cur").value = "USD"; updAmtUsd(); piiCheck(); setStatus("");
+  const pw = document.getElementById("piiWarn"); if (pw) pw.classList.add("hidden");
+}
+function softResetChat(){ const q = document.getElementById("chatQ"); if (q) q.value = ""; const u = document.getElementById("chatUnavail"); if (u) u.classList.add("hidden"); }
+(function(){
+  const cur = () => (TABS.find(t => { const e = document.getElementById("tab-" + t); return e && !e.classList.contains("hidden"); }) || "home");
+  const _st = showTab;
+  showTab = function(k){ const prev = cur(); _st(k); const now = cur(); if (prev !== now){ if (prev === "ask") softResetAsk(); if (prev === "chat") softResetChat(); } };
+  // 새로고침·재접속 때 브라우저가 이전 입력을 되살리지 않게
+  ["qbox", "chatQ", "hqQ"].forEach(id => { const e = document.getElementById(id); if (e){ e.setAttribute("autocomplete", "off"); e.value = ""; } });
+  window.addEventListener("pageshow", ev => { if (ev.persisted){ softResetAsk(); softResetChat(); } });
+  // 상단 [초기화]: 지점·담당자는 본인 정보로 다시 채움
+  const _ra = RESETS.ask; RESETS.ask = () => { _ra(); fxRefillStaff(); };
+  // 예전 'Claude AI 로그인 / 연결' 문구가 늦게 덮어쓰지 않도록 (웹은 'Claude 심층 검토')
+  const cl = () => { const t = document.getElementById("claudeBtnT"); if (t) t.textContent = "Claude 심층 검토"; };
+  [50, 2600, 8100, 12000].forEach(ms => setTimeout(cl, ms));
 })();
 /* ---------- 화면 밝기 ---------- */
 (function(){
