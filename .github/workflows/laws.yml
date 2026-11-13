@@ -49,8 +49,10 @@ jobs:
             "사이트에는 새 버전 번호·시행일이 먼저 반영되었습니다. 개정 요지와 조문 원문은 국가법령정보센터에서 새 파일을 받아 반영해 주세요." > "$RUNNER_TEMP/issue.md"
           gh issue create --title "[법령 개정 감지] $(TZ=Asia/Seoul date +%F)" --body-file "$RUNNER_TEMP/issue.md"
 
-      - name: 확인 실패 시 작업 실패 처리 (GitHub가 실패 메일 발송)
+      # 일부 법령만 확인 실패하면 읽어 온 법령은 반영하고 경고(노란색)로만 표시합니다.
+      # 하나도 확인하지 못했을 때(사이트 장애 등)만 작업을 실패 처리해 GitHub가 실패 메일을 보냅니다.
+      - name: 전체 확인 실패 시 작업 실패 처리 (GitHub가 실패 메일 발송)
         if: steps.laws.outcome == 'failure'
         run: |
-          echo "::error::일부 법령의 현행 버전을 확인하지 못했습니다. 위 '법령 현행 버전 확인' 단계 로그를 보세요."
+          echo "::error::법령을 하나도 확인하지 못했습니다(국가법령정보센터 접속 장애 가능). 위 '법령 현행 버전 확인' 단계 로그를 보세요."
           exit 1
