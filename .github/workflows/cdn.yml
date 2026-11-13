@@ -9,7 +9,12 @@ on:
     types: [completed]
   schedule:
     - cron: "40 1 * * *"   # 매일 10:40 (한국 시간) 안전망
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      oidc_test:
+        description: "토큰 없이(신뢰 배포만으로) 강제 배포해 보기"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ["data/rates.json", "data/updates.json", ".github/workflows/cdn.yml", "tools/build_cdn_pkg.py"]
@@ -41,10 +46,10 @@ jobs:
           echo "hash=$(python3 -c "import json;print(json.load(open('pkg/package.json'))['fxhash'])")" >> "$GITHUB_OUTPUT"
       - name: npm 배포 (바뀐 경우에만)
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ inputs.oidc_test && '' || secrets.NPM_TOKEN }}
         run: |
           OLD=$(npm view "$PKG" fxhash 2>/dev/null || true)
-          if [ "$OLD" = "${{ steps.b.outputs.hash }}" ]; then echo "변경 없음"; exit 0; fi
+          if [ "${{ inputs.oidc_test }}" != "true" ] && [ "$OLD" = "${{ steps.b.outputs.hash }}" ]; then echo "변경 없음"; exit 0; fi
           cd pkg && for i in 1 2 3; do npm publish --access public && break; sleep $((i*10)); [ $i = 3 ] && exit 1; done
           sleep 20
           curl -fsS "https://purge.jsdelivr.net/npm/$PKG@latest/fxdata.js" >/dev/null || echo "jsDelivr 캐시 비우기 실패(무시)"
