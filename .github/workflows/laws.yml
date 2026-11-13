@@ -1,0 +1,56 @@
+# 매일 아침 국가법령정보센터에서 외환 관련 법령·고시의 현행 버전을 확인해 data/updates.json 을 갱신합니다.
+# 새 버전이 있으면 changes 에 기록하고 GitHub 이슈로 알립니다. data/updates.json 외의 파일은 건드리지 않습니다.
+# (환율은 기존 rates.yml 「고시환율 갱신」이 담당합니다.)
+name: 법령 개정 점검
+
+on:
+  schedule:
+    - cron: "7 0 * * *"    # 매일 09:07 (한국 시간)
+  workflow_dispatch: {}     # Actions 탭에서 수동 실행 가능
+
+permissions:
+  contents: write   # data/updates.json 커밋
+  issues: write     # 새 법령 버전 감지 시 이슈로 알림
+
+concurrency: { group: laws, cancel-in-progress: false }
+
+jobs:
+  laws:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 법령 현행 버전 확인
+        id: laws
+        continue-on-error: true
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}   # 선택: 국가법령정보센터 Open API 인증키. 없으면 웹페이지를 읽어 확인
+        run: python3 tools/check_laws.py data/updates.json
+
+      - name: 바뀐 경우에만 커밋
+        run: |
+          git add data/updates.json
+          if git diff --cached --quiet; then echo "변경 없음"; exit 0; fi
+          if git diff --cached --name-only | grep -vx 'data/updates.json'; then echo "허용되지 않은 파일 포함 → 중단"; exit 1; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "data: 법령 개정 점검 $(TZ=Asia/Seoul date +%F)"
+          for i in 1 2 3 4; do git pull --rebase -q origin main && git push -q origin HEAD:main && exit 0; sleep $((2**i)); done
+          exit 1
+
+      - name: 새 법령 버전 알림
+        if: steps.laws.outputs.new_changes != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_CHANGES: ${{ steps.laws.outputs.new_changes }}
+        run: |
+          printf '%s\n\n%s\n' "$NEW_CHANGES" \
+            "사이트에는 새 버전 번호·시행일이 먼저 반영되었습니다. 개정 요지와 조문 원문은 국가법령정보센터에서 새 파일을 받아 반영해 주세요." > "$RUNNER_TEMP/issue.md"
+          gh issue create --title "[법령 개정 감지] $(TZ=Asia/Seoul date +%F)" --body-file "$RUNNER_TEMP/issue.md"
+
+      - name: 확인 실패 시 작업 실패 처리 (GitHub가 실패 메일 발송)
+        if: steps.laws.outcome == 'failure'
+        run: |
+          echo "::error::일부 법령의 현행 버전을 확인하지 못했습니다. 위 '법령 현행 버전 확인' 단계 로그를 보세요."
+          exit 1
