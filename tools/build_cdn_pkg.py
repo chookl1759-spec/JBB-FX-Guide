@@ -18,6 +18,7 @@ js = ("/* 서울외국환중개 최초고시 매매기준율 · 외환 법령 �
 open(os.path.join(out, "fxdata.js"), "w", encoding="utf-8").write(js)
 pkg = {"name": name, "version": f"{now.year}.{now.month * 100 + now.day}.{now.hour * 100 + now.minute}",
        "description": "Daily KRW reference exchange rates (Seoul Money Brokerage first fixing) and FX regulation version check results.",
-       "main": "fxdata.js", "files": ["fxdata.js"], "license": "UNLICENSED", "fxhash": h}
+       "main": "fxdata.js",
+       "repository": {"type": "git", "url": "git+https://github.com/chookl1759-spec/JBB-FX-Guide.git"}, "files": ["fxdata.js"], "license": "UNLICENSED", "fxhash": h}
 json.dump(pkg, open(os.path.join(out, "package.json"), "w"), indent=2)
 print(pkg["version"], h)

@@ -1,6 +1,6 @@
 # Claude 버전용 데이터 배포: 고시환율·법령 점검이 끝나면 data/rates.json·data/updates.json 을
 # 공개 npm 패키지(fxdata.js)로 올립니다. Claude 버전 화면이 unpkg·jsDelivr 에서 이 파일을 읽어 매일 최신으로 표시합니다.
-# 필요: 저장소 Secrets 의 NPM_TOKEN (npm Granular access token, 쓰기 권한). 없으면 아무것도 하지 않고 끝납니다.
+# 인증: npm '신뢰 배포(Trusted Publisher)'가 설정돼 있으면 토큰 없이 배포합니다(권장). 아니면 Secrets 의 NPM_TOKEN 을 씁니다.
 name: Claude 버전 데이터 배포
 
 on:
@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write   # npm 신뢰 배포(토큰 없이 GitHub 신원으로 배포)
 
 concurrency: { group: cdn, cancel-in-progress: false }
 
@@ -30,7 +31,9 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, registry-url: "https://registry.npmjs.org" }
+        with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
+      - name: npm 최신화 (신뢰 배포는 npm 11.5.1 이상 필요)
+        run: npm install -g npm@latest
       - name: 데이터 묶기
         id: b
         run: |
@@ -40,7 +43,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then echo "::warning::NPM_TOKEN 이 없어 Claude 버전 데이터 배포를 건너뜁니다."; exit 0; fi
           OLD=$(npm view "$PKG" fxhash 2>/dev/null || true)
           if [ "$OLD" = "${{ steps.b.outputs.hash }}" ]; then echo "변경 없음"; exit 0; fi
           cd pkg && for i in 1 2 3; do npm publish --access public && break; sleep $((i*10)); [ $i = 3 ] && exit 1; done
