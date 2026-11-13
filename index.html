@@ -5901,9 +5901,9 @@ function admFilter(rows){
   const chips = (key, items) => items.map(([v, l]) => `<button type="button" class="af-chip${ADMF[key] === v ? " on" : ""}" data-af="${key}" data-v="${v}" aria-pressed="${ADMF[key] === v}">${l}</button>`).join("");
   host.insertAdjacentHTML("beforebegin", `<div class="adm-tools" id="admTools" aria-label="이용자 필터">
     <div class="adm-row"><input class="field adm-search" id="admQ" type="search" inputmode="search" placeholder="사번(6자리) 또는 이름으로 검색" autocomplete="off" aria-label="사번 또는 이름 검색">
-      <select class="field adm-sort" id="admSort" aria-label="정렬"><option value="recent">최근 로그인 순</option><option value="count">검토 건수 많은 순</option><option value="emp">사번 오름차순</option></select></div>
-    <div class="adm-row"><span class="lb">기간</span>${chips("period", [["all", "전체"], ["today", "오늘"], ["3d", "최근 3일 이내"], ["7d", "최근 7일 이내"]])}</div>
-    <div class="adm-row"><span class="lb">활동</span>${chips("act", [["all", "전체"], ["used", "검토 1회 이상"], ["none", "미이용자"]])}<span id="admCount"></span></div></div>`);
+      <select class="field adm-sort" id="admSort" aria-label="정렬"><option value="recent">최근 접속순</option><option value="count">검토 많은 순</option><option value="emp">사번순</option></select></div>
+    <div class="adm-row"><span class="lb">기간</span>${chips("period", [["all", "전체"], ["today", "오늘"], ["3d", "최근 3일"], ["7d", "최근 7일"]])}</div>
+    <div class="adm-row"><span class="lb">활동</span>${chips("act", [["all", "전체"], ["used", "검토 1회 이상 이용자"], ["none", "미이용자"]])}<span id="admCount"></span></div></div>`);
   const tools = document.getElementById("admTools");
   tools.addEventListener("click", e => { const b = e.target.closest("[data-af]"); if (!b) return; ADMF[b.dataset.af] = b.dataset.v;
     tools.querySelectorAll(`[data-af="${b.dataset.af}"]`).forEach(x => { const on = x.dataset.v === ADMF[b.dataset.af]; x.classList.toggle("on", on); x.setAttribute("aria-pressed", on); }); admRender(); });
