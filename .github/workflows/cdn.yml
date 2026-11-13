@@ -1,0 +1,49 @@
+# Claude 버전용 데이터 배포: 고시환율·법령 점검이 끝나면 data/rates.json·data/updates.json 을
+# 공개 npm 패키지(fxdata.js)로 올립니다. Claude 버전 화면이 unpkg·jsDelivr 에서 이 파일을 읽어 매일 최신으로 표시합니다.
+# 필요: 저장소 Secrets 의 NPM_TOKEN (npm Granular access token, 쓰기 권한). 없으면 아무것도 하지 않고 끝납니다.
+name: Claude 버전 데이터 배포
+
+on:
+  workflow_run:
+    workflows: ["고시환율 갱신", "법령 개정 점검"]
+    types: [completed]
+  schedule:
+    - cron: "40 1 * * *"   # 매일 10:40 (한국 시간) 안전망
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ["data/rates.json", "data/updates.json", ".github/workflows/cdn.yml", "tools/build_cdn_pkg.py"]
+
+permissions:
+  contents: read
+
+concurrency: { group: cdn, cancel-in-progress: false }
+
+env:
+  PKG: kr-fx-daily-feed
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, registry-url: "https://registry.npmjs.org" }
+      - name: 데이터 묶기
+        id: b
+        run: |
+          python3 tools/build_cdn_pkg.py pkg "$PKG"
+          echo "hash=$(python3 -c "import json;print(json.load(open('pkg/package.json'))['fxhash'])")" >> "$GITHUB_OUTPUT"
+      - name: npm 배포 (바뀐 경우에만)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then echo "::warning::NPM_TOKEN 이 없어 Claude 버전 데이터 배포를 건너뜁니다."; exit 0; fi
+          OLD=$(npm view "$PKG" fxhash 2>/dev/null || true)
+          if [ "$OLD" = "${{ steps.b.outputs.hash }}" ]; then echo "변경 없음"; exit 0; fi
+          cd pkg && for i in 1 2 3; do npm publish --access public && break; sleep $((i*10)); [ $i = 3 ] && exit 1; done
+          sleep 20
+          curl -fsS "https://purge.jsdelivr.net/npm/$PKG@latest/fxdata.js" >/dev/null || echo "jsDelivr 캐시 비우기 실패(무시)"
+          echo "### Claude 버전 데이터 배포 완료: $(jq -r .version package.json)" >> "$GITHUB_STEP_SUMMARY"
