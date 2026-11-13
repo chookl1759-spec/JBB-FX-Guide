@@ -5889,10 +5889,10 @@ function admFilter(rows){
   }
   if (ADMF.act === "used") v = v.filter(r => r.n > 0); else if (ADMF.act === "none") v = v.filter(r => !r.n);
   const q = ADMF.q.trim().toLowerCase();
-  if (q) v = v.filter(r => (/^\d+$/.test(q) ? String(r.emp || "").includes(q) : false) || String(r.label || "").toLowerCase().includes(q) || String(r.emp || "").includes(q));
+  if (q) v = v.filter(r => (/^\d+$/.test(q) ? String(r.emp || "").includes(q) : false) || String(r.label || (typeof NAMES !== "undefined" && NAMES[r.id]) || "").toLowerCase().includes(q) || String(r.emp || "").includes(q));
   const rec = (a, b) => admLastAct(b).localeCompare(admLastAct(a));
   if (ADMF.sort === "count") v.sort((a, b) => b.n - a.n || rec(a, b));
-  else if (ADMF.sort === "emp") v.sort((a, b) => (a.emp ? 0 : 1) - (b.emp ? 0 : 1) || String(a.emp).localeCompare(String(b.emp)) || String(a.label).localeCompare(String(b.label), "ko"));
+  else if (ADMF.sort === "emp") v.sort((a, b) => (a.emp ? 0 : 1) - (b.emp ? 0 : 1) || String(a.emp).localeCompare(String(b.emp)) || String(a.label || "").localeCompare(String(b.label || ""), "ko"));
   else v.sort(rec);
   return v;
 }
@@ -5935,7 +5935,7 @@ function softResetChat(){ const q = document.getElementById("chatQ"); if (q) q.v
   // 상단 [초기화]: 지점·담당자는 본인 정보로 다시 채움
   const _ra = RESETS.ask; RESETS.ask = () => { _ra(); fxRefillStaff(); };
   // 예전 'Claude AI 로그인 / 연결' 문구가 늦게 덮어쓰지 않도록 (웹은 'Claude 심층 검토')
-  const cl = () => { const t = document.getElementById("claudeBtnT"); if (t) t.textContent = "Claude 심층 검토"; };
+  const cl = () => { if (!window.__WEB) return; const t = document.getElementById("claudeBtnT"); if (t) t.textContent = "Claude 심층 검토"; };
   [50, 2600, 8100, 12000].forEach(ms => setTimeout(cl, ms));
 })();
 /* ---------- 화면 밝기 ---------- */
