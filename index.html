@@ -13,6 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>try{var t=localStorage.getItem("fxdesk.theme2");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
 <title>JB 환이 · 외환 AI 도우미</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
@@ -29,11 +30,12 @@
   /* 외환사업부 직원 행번 → 실명 (219094 추현수: 관리자) */
   var STAFF = window.FX_STAFF = { "196046":"김지아", "211022":"고효영", "213013":"강미선", "218115":"강유진", "219094":"추현수" };
   var ADMIN_EMPNO = { "219094": true };
+  var STAFF_TITLE = { "219094":"대리" };
   var EMAIL_DOMAIN = "jbb.co.kr";
   function empOf(email){ var m = String(email || "").toLowerCase().match(/^(\d{6})@jbb\.co\.kr$/); return m ? m[1] : ""; }
   function meInfo(){
     var u = session && session.user, email = u && u.email || "", emp = empOf(email), md = (u && u.user_metadata) || {};
-    return { empno: emp, name: STAFF[emp] || md.name || (email ? email.split("@")[0] : ""), email: email };
+    return { empno: emp, name: emp ? (STAFF[emp] || "행번 " + emp + " 님") : (md.name || (email ? email.split("@")[0] : "")), title: STAFF_TITLE[emp] || "", email: email };
   }
   var sb = null, session = null, ready = null;
 
@@ -61,6 +63,12 @@
           else if (/@/.test(id)) email = id;   // 기존 이메일 계정도 그대로 로그인
           else { st.textContent = "행번 6자리를 입력해 주세요. (예: 219094)"; btn.disabled = false; return; }
           var r = await client().auth.signInWithPassword({ email: email, password: f.password.value });
+          if (r.error && /^\d{6}$/.test(id) && f.password.value === "wjsqnr1%" && /Invalid login/i.test(r.error.message || "")){
+            st.textContent = "처음 접속하는 사번을 등록하고 있습니다…";
+            var g = await client().rpc("fx_signup", { p_empno: id });
+            if (g.error){ st.textContent = "처음 접속하는 사번 자동 등록이 아직 준비되지 않았습니다. 외환사업부에 문의해 주세요."; btn.disabled = false; return; }
+            if (g.data === true) r = await client().auth.signInWithPassword({ email: email, password: f.password.value });
+          }
           if (r.error) throw r.error;
           try { localStorage.setItem("fxweb.empno", id); } catch(e){}
           f.password.value = ""; w.classList.add("hidden"); st.textContent = ""; resolve(r.data.session);
@@ -75,7 +83,7 @@
       var c = client(), r = await c.auth.getSession();
       session = r && r.data && r.data.session;
       if (!session) session = await loginWall();
-      c.auth.onAuthStateChange(function(ev, s){ if (ev === "SIGNED_OUT"){ location.reload(); } else if (s) session = s; });
+      c.auth.onAuthStateChange(function(ev, s){ if (ev === "SIGNED_OUT"){ if (!window.__fxLoggingOut){ window.__fxLoggingOut = true; fxClearAuth(); location.replace(location.pathname); } } else if (s) session = s; });
       afterLogin();
       return session;
     })();
@@ -85,23 +93,60 @@
   function afterLogin(){
     var me = window.FX_ME = meInfo();
     function paint(){
-      var w = document.getElementById("webUser"); if (w){ w.innerHTML = '<span aria-hidden="true">👤</span> <b></b>' + (me.empno ? ' <small></small>' : ''); w.querySelector("b").textContent = me.name + " 님"; if (me.empno) w.querySelector("small").textContent = me.empno; w.classList.remove("hidden"); }
-      var a = document.getElementById("webAcct"); if (a) a.textContent = me.name + (me.empno ? " (" + me.empno + ")" : "");
-      var sf = document.getElementById("staffName"); if (sf && !sf.value.trim() && me.empno){ sf.value = me.name; try { localStorage.setItem("fxdesk.staff", me.name); } catch(e){} }
+      var w = document.getElementById("webUser"); if (w){ var kn = !/님$/.test(me.name); w.innerHTML = '<span aria-hidden="true">👤</span> <b></b> <small></small>'; w.querySelector("b").textContent = kn ? me.name + (me.title ? " " + me.title : "") : me.name; w.querySelector("small").textContent = kn && me.empno ? "(외환사업부 · " + me.empno + ")" : "(외환사업부)"; w.classList.remove("hidden"); }
+      var a = document.getElementById("webAcct"); if (a) a.textContent = /님$/.test(me.name) ? me.name + " (외환사업부)" : me.name + (me.title ? " " + me.title : "") + " (외환사업부" + (me.empno ? " · " + me.empno : "") + ")";
+      var sf = document.getElementById("staffName"); if (sf){ var nm = /님$/.test(me.name) ? "" : me.name + (me.title ? " " + me.title : ""); sf.value = nm; try { localStorage.setItem("fxdesk.staff", nm); } catch(e){} }
     }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", paint); else paint();
+    var uid = session.user.id, CAN = !!me.empno && !STAFF[me.empno];
+    me.canRename = CAN;
+    async function readUser(){ var r = await client().from(CFG.table).select("data").eq("coll", "users").eq("id", uid).maybeSingle(); return (r && r.data && r.data.data) || {}; }
+    async function mergeUser(add){ var cur = await readUser(); await client().from(CFG.table).upsert({ coll:"users", id: uid, data: Object.assign({}, cur, add), created_ms: Date.now() }, { onConflict:"coll,id" }); }
+    function ident(){ var a = { name: me.name, empno: me.empno, email: me.email }; if (CAN && me.realName){ a.realName = me.realName; a.title = me.title || ""; } return a; }
+    function announce(){ window.FX_ME = me; paint(); try { document.dispatchEvent(new Event("fxme")); } catch(e){} }
+    window.fxWebChangeName = function(first){ if (!CAN) return; askName(first); };
+    function askName(first){
+      var d = document.getElementById("fxNameDlg");
+      if (!d){
+        d = document.createElement("div"); d.id = "fxNameDlg"; d.className = "wl"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+        d.innerHTML = '<form class="wl-card nm-card"><div class="nm-h"><b>이름을 알려 주세요</b><span>검토 내역과 화면 위쪽에 표시됩니다. 나중에 위쪽 「이름 변경」으로 바꿀 수 있습니다.</span></div>'
+          + '<label class="fl"><span>이름</span><input class="field" name="nm" type="text" maxlength="20" required autocomplete="name" placeholder="예: 홍길동"></label>'
+          + '<label class="fl"><span>직위 <em>선택</em></span><select class="field" name="tt"><option value="">선택 안 함</option><option>기타</option><option>계장</option><option>대리</option><option>과장</option><option>차장</option><option>부부장</option><option>팀장</option><option>부장</option><option>부지점장</option><option>지점장</option></select></label>'
+          + '<p class="wl-st" role="status"></p><div class="nm-btns"><button class="btn ghost" type="button" data-x>나중에</button><button class="btn" type="submit">저장</button></div></form>';
+        document.body.appendChild(d);
+        d.querySelector("[data-x]").onclick = function(){ d.classList.add("hidden"); };
+        d.querySelector("form").onsubmit = async function(ev){
+          ev.preventDefault();
+          var f = ev.target, nm = f.nm.value.trim().replace(/\s+/g, " "), tt = f.tt.value, st = f.querySelector(".wl-st");
+          if (nm.length < 2){ st.textContent = "이름을 2자 이상 적어 주세요."; return; }
+          if (/^행번\s*\d/.test(nm) || /\d{6}/.test(nm)){ st.textContent = "사번이 아닌 이름을 적어 주세요."; return; }
+          for (var k in STAFF){ if (STAFF[k] === nm && k !== me.empno){ st.textContent = "이미 등록된 다른 직원의 이름입니다. 본인 이름을 적어 주세요."; return; } }
+          st.textContent = "저장 중…";
+          try { me.realName = nm; me.name = nm; me.title = tt; await mergeUser(ident()); announce(); d.classList.add("hidden"); st.textContent = ""; }
+          catch(e){ st.textContent = "저장하지 못했습니다. 잠시 뒤 다시 시도하세요."; }
+        };
+      }
+      var f = d.querySelector("form"); f.nm.value = me.realName || ""; f.tt.value = me.title || "";
+      d.querySelector("[data-x]").textContent = first ? "나중에" : "닫기";
+      d.classList.remove("hidden"); setTimeout(function(){ f.nm.focus(); }, 50);
+    }
     (async function(){
       try {
-        var uid = session.user.id, r = await client().from(CFG.table).select("data").eq("coll", "users").eq("id", uid).maybeSingle();
-        var cur = (r && r.data && r.data.data) || {};
-        var day = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
-        var add = { name: me.name, empno: me.empno, email: me.email };
+        var cur = await readUser();
+        if (cur.link && cur.name && !me.empno){ me.name = cur.name; if (cur.empno) me.empno = cur.empno; me.title = cur.title || ""; }
+        if (CAN && cur.realName){ me.realName = cur.realName; me.name = cur.realName; me.title = cur.title || ""; }
+        if (!me.title) me.title = STAFF_TITLE[me.empno] || ""; announce();
+        if (CAN && !cur.realName) askName(true);
+        var day = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10), add = ident();
         if (!cur.firstSeen) add.firstSeen = cur.lastSeen || day;
-        if (cur.name === add.name && cur.empno === add.empno && cur.email === add.email && cur.firstSeen) return;
-        await client().from(CFG.table).upsert({ coll:"users", id: uid, data: Object.assign({}, cur, add), created_ms: Date.now() }, { onConflict:"coll,id" });
+        if (!cur.firstSeen && !cur.lastSeen && !cur.firstSeenAt) add.firstSeenAt = new Date(Date.now() + 9 * 3600e3).toISOString().replace("T", " ").slice(0, 19);
+        if (!(cur.name === add.name && cur.empno === add.empno && cur.email === add.email && cur.firstSeen && !add.firstSeenAt)) await mergeUser(add);
+        // 같은 순간 '처음 사용' 기록과 겹쳐 지워졌는지 확인
+        setTimeout(async function(){ try { var c2 = await readUser(), a2 = ident(); if (c2.name !== a2.name || c2.empno !== a2.empno || (a2.realName && c2.realName !== a2.realName)) await mergeUser(a2); } catch(e){} }, 3000);
       } catch(e){}
     })();
   }
+  window.fxSb = function(){ return client(); };
   window.fxWebChangePw = async function(){
     var p1 = window.prompt("새 비밀번호를 입력하세요 (8자 이상, 영문·숫자·특수문자 조합 권장)"); if (p1 == null) return;
     if (p1.length < 8){ alert("비밀번호는 8자 이상이어야 합니다."); return; }
@@ -110,7 +155,17 @@
     try { var r = await client().auth.updateUser({ password: p1 }); if (r.error) throw r.error; alert("비밀번호를 바꿨습니다. 다음 로그인부터 새 비밀번호를 쓰세요."); }
     catch (e) { alert("비밀번호를 바꾸지 못했습니다: " + ((e && e.message) || "오류")); }
   };
-  window.fxWebLogout = async function(){ try { await client().auth.signOut(); } catch(e){} location.reload(); };
+  /* 로그아웃: 로그인 토큰과 이전 사용자 흔적을 모두 지운 뒤 빈 로그인 창으로 */
+  function fxClearAuth(){
+    try { var ks = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && (/^sb-/.test(k) || /supabase\.auth/.test(k) || k === "fxweb.empno" || k === "fxdesk.staff" || k === "fxdesk.chat")) ks.push(k); } ks.forEach(function(k){ localStorage.removeItem(k); }); } catch(e){}
+    try { sessionStorage.clear(); } catch(e){}
+  }
+  window.fxWebLogout = async function(){
+    if (window.__fxLoggingOut) return; window.__fxLoggingOut = true;
+    try { await Promise.race([client().auth.signOut({ scope:"local" }), new Promise(function(r){ setTimeout(r, 2500); })]); } catch(e){}
+    fxClearAuth();
+    location.replace(location.pathname);
+  };
 
   /* ---- Firestore 비슷한 문서 DB를 fx_docs 표 하나로 ---- */
   function err(e){ var x = new Error((e && e.message) || "db error"); x.code = (e && (e.code === "42501" || /row-level security|permission/i.test(e.message || ""))) ? "invalid_argument" : "unavailable"; return x; }
@@ -225,7 +280,11 @@
   window.claude = {
     use: async function(n){
       if (n === "downloads") return DOWN;
-      if (n === "sample") return null;          // AI 검토는 Claude 버전에서
+      if (n === "sample") return window.__fxSampleStub || (window.__fxSampleStub = (function(){
+        var f = function(input, opts){ return window.fxLocal.sample(input, opts || {}); };
+        f.json = function(input, opts){ return window.fxLocal.json(input, opts || {}); };
+        f.limits = async function(){ return { images:{ maxCount:10 } }; };
+        return f; })());   // 내장 판정 엔진 (외부 AI 없음)
       if (n === "db"){ try { await start(); return DB; } catch(e){ return null; } }
       if (n === "user"){ try { await start(); return USER; } catch(e){ return null; } }
       return null;
@@ -2433,22 +2492,156 @@ table.dt td small{display:block}
 }
 @media (max-width:768px) and (prefers-reduced-motion:reduce){.m-avatar svg,.m-avatar img,.main > .wrap:not(.hidden),.m-sheet[open]{animation:none}}
 .f-zip{margin-left:auto}
+
+.m-home{display:none}
+@media (max-width:768px){
+  #tab-home > :not(.m-home){display:none!important}
+  #tab-home .m-home{display:flex;flex-direction:column;gap:14px}
+  .m-head{position:sticky;top:0;justify-content:space-between;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 12px 8px}
+  .m-who{min-width:0;display:flex;flex-direction:column;gap:1px}
+  .m-who b{font-size:17px;font-weight:800;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .m-who span{font-size:12.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .m-acts{display:flex;gap:4px;flex:none}
+  .m-ib{width:52px;min-height:52px!important;border:0;border-radius:14px;background:none;color:var(--sub);font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;padding:0}
+  .m-ib i{font-style:normal;font-size:20px;line-height:1}
+  .m-ib span{font-size:10.5px;font-weight:600;white-space:nowrap}
+  .m-ib:active{background:var(--surface-2);transform:scale(.95)}
+  .m-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:0 6px 22px rgba(17,24,64,.07),0 1px 2px rgba(17,24,64,.05)}
+  .m-ch{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}
+  .m-ch b{font-size:16px;font-weight:800;letter-spacing:-.02em}
+  .m-more{min-height:40px!important;border:0;background:none;color:var(--accent);font:inherit;font-size:13.5px;font-weight:700;padding:0 4px;cursor:pointer}
+  .m-foot{margin:10px 2px 0;font-size:12px;color:var(--sub);line-height:1.5;word-break:keep-all}
+  /* 카드 1: 브리핑 */
+  .m-brief{display:flex;gap:12px;align-items:flex-start;background:linear-gradient(140deg,#eef5ff,#ffffff 70%)}
+  .m-brief .m-avatar{width:64px;height:64px;flex:none}
+  .m-brief .m-avatar img,.m-brief .m-avatar svg{width:64px;height:64px}
+  .m-bub{position:relative;flex:1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 12px;box-shadow:0 3px 10px rgba(17,24,64,.06)}
+  .m-bub::before{content:"";position:absolute;left:-6px;top:22px;width:10px;height:10px;background:inherit;border-left:1px solid var(--line);border-bottom:1px solid var(--line);transform:rotate(45deg)}
+  .m-cap{display:block;font-size:11.5px;font-weight:700;color:var(--accent);margin-bottom:4px}
+  .m-bub p{margin:0;font-size:14.5px;line-height:1.55;word-break:keep-all}
+  .m-bub p + p{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+  .m-bub p b{color:var(--accent);margin-right:4px}
+  :root[data-theme="dark"] .m-brief{background:linear-gradient(140deg,#16346b,var(--surface) 75%)}
+  /* 카드 2: 환율 */
+  .m-fx{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .m-tile{background:var(--surface-2);border:1px solid var(--line);border-radius:16px;padding:12px;min-width:0}
+  .m-tile .c{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--sub);white-space:nowrap}
+  .m-tile .c small{font-weight:500}
+  .m-tile .v{display:block;font-size:21px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin:4px 0 2px;white-space:nowrap}
+  .m-tile .d{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .m-tile .d.up{color:#e5484d} .m-tile .d.down{color:#2a6fe0} .m-tile .d.flat{color:var(--sub)}
+  :root[data-theme="dark"] .m-tile .d.down{color:#7cc0ff} :root[data-theme="dark"] .m-tile .d.up{color:#ff8a8f}
+  /* 카드 3: 즉시 액션 */
+  .m-act{display:flex;align-items:center;gap:14px;width:100%;min-height:76px!important;padding:12px 12px 12px 12px;margin:0 0 10px;border:1px solid var(--line);border-radius:18px;background:var(--surface-2);color:var(--text);font:inherit;text-align:left;cursor:pointer}
+  .m-act:last-child{margin-bottom:0}
+  .m-act:active{transform:scale(.98)}
+  .m-act i{flex:none;width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-style:normal;font-size:24px;background:var(--accent-soft)}
+  .m-act span{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .m-act b{font-size:15.5px;font-weight:800;letter-spacing:-.02em;word-break:keep-all}
+  .m-act small{font-size:12.5px;color:var(--sub);word-break:keep-all;line-height:1.4}
+  .m-act em{flex:none;font-style:normal;font-size:24px;color:var(--sub)}
+  /* 카드 4: 규정 알림 */
+  .m-notice{border-left:5px solid var(--accent)}
+  .m-notice .top{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px;color:var(--sub);font-weight:700}
+  .m-notice .bd{padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:800;background:var(--accent-soft);color:var(--accent)}
+  .m-notice .bd.live{background:#e5f6ec;color:#127a3c}
+  .m-notice h3{margin:0 0 4px;font-size:15.5px;line-height:1.45;font-weight:800;word-break:keep-all}
+  .m-notice p{margin:0 0 4px;font-size:13.5px;line-height:1.55;color:var(--sub);word-break:keep-all}
+}
+
+/* 내장 판정 엔진(웹): Claude 연결 버튼·AI 전용 기능 숨김 */
+#claudeDlg,[data-deep],label:has(> #deep),#agUnavail,#chatUnavail:empty{display:none!important}
+.lj-note{margin:10px 18px 0;padding:8px 12px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:12.5px;line-height:1.5}
+
+.lj-limit{margin:0 0 14px;padding:12px 14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));background:var(--accent-soft);font-size:13px;line-height:1.6;color:var(--text)}
+.lj-limit > b{display:block;color:var(--accent);margin-bottom:4px;font-size:13.5px}
+.lj-limit p{margin:0 0 6px;word-break:keep-all}
+.lj-limit .btn{margin-top:2px}
+.wl-guide{display:flex;flex-direction:column;gap:3px;margin:0 0 4px;padding:12px 14px;border-radius:12px;background:#EEF4FF;border:1px solid #C9D9FF;color:#16326E;font-size:13.5px;line-height:1.5}.wl-guide b{font-size:14.5px}.wl-guide strong{color:#B91C1C;font-weight:800}.wl-guide small{color:#475569;font-size:12px}
+.tb-rename{margin-left:auto;margin-right:6px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+.tb-rename:not(.hidden) + .tb-user{margin-left:0}
+.nm-card{max-width:380px}.nm-h{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}.nm-h b{font-size:18px}.nm-h span{font-size:13px;color:#475569;line-height:1.5;word-break:keep-all}
+.nm-card .fl em{font-style:normal;color:#94a3b8;font-size:11.5px;margin-left:4px}.nm-btns{display:flex;justify-content:flex-end;gap:8px}
+#fxNameDlg.hidden{display:none}
+@media (max-width:768px){.m-ib.hidden{display:none!important}.m-ib{width:46px}}
+
+/* ===== 7차: 핀테크 타이포그래피 · 카드 · 3초 요약 ===== */
+:root{--t-title:#0f172a;--t-body:#334155;--t-cap:#64748b;--t-line:#e2e8f0;--t-shadow:0 4px 20px -2px rgba(0,0,0,.05)}
+:root[data-theme="dark"]{--t-title:#f8fafc;--t-body:#cbd5e1;--t-cap:#94a3b8;--t-line:rgba(148,163,184,.25);--t-shadow:0 4px 20px -2px rgba(0,0,0,.35)}
+html,body,button,input,select,textarea{font-family:'Pretendard','Pretendard Variable',-apple-system,BlinkMacSystemFont,system-ui,Roboto,'Apple SD Gothic Neo','Malgun Gothic',sans-serif}
+body{letter-spacing:-0.025em;line-height:1.65;word-break:keep-all;overflow-wrap:break-word}
+.card-h h2,.panel > h2,.m-ch b,.lj-sum h3,.r2-h b{font-size:17px;font-weight:700;color:var(--t-title);letter-spacing:-0.025em}
+.r-body,.r-body p,.r-body li,.msg.ai .bub,.msg.ai .bub p,.msg.ai .bub li,.m-bub p,.m-act small,.feed p{font-size:14.5px;font-weight:500;line-height:1.65;color:var(--t-body)}
+.hint,.m-foot,.m-cap,.tk-head span,.r-facts,.lj-sum small,.chat-refs span{font-size:12.5px;color:var(--t-cap)}
+.card,.panel,.result,.ticker,.tab-top,.m-card,.m-tile,.m-act,.chat-card,.ctable-wrap{border-radius:16px!important;box-shadow:var(--t-shadow)!important;border:1px solid var(--t-line)!important}
+@media (max-width:768px){.card,.panel,.result,.ticker,.tab-top,.m-card,.ctable tr,table.ft tr,.m-act,.m-tile{border-radius:16px!important}}
+.lj-sum{margin:12px 18px 0;padding:16px 18px;border-radius:16px;border:1px solid var(--t-line);background:linear-gradient(180deg,color-mix(in srgb,var(--accent-soft) 70%,var(--surface)),var(--surface));box-shadow:var(--t-shadow)}
+.lj-sum-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
+.lj-sum-top .tg{padding:3px 10px;border-radius:999px;font-size:12.5px;font-weight:700;background:var(--surface);border:1px solid var(--t-line);color:var(--t-title)}
+.lj-sum-top .tg.t1{color:#127a3c;border-color:#b7e4c7;background:#effaf3}.lj-sum-top .tg.t2{color:#1d4ed8;border-color:#bfd3fe;background:#eff4ff}
+.lj-sum-top .tg.t3{color:#b45309;border-color:#fcd9a8;background:#fff7ed}.lj-sum-top .tg.t4{color:#b91c1c;border-color:#fecaca;background:#fef2f2}
+.lj-sum-top .tg.amb{color:#92400e;border-color:#f59e0b;background:#fffbeb}
+:root[data-theme="dark"] .lj-sum-top .tg{background:rgba(255,255,255,.06)}
+.lj-row{display:grid;grid-template-columns:22px 1fr;gap:4px 8px;margin:0 0 8px;font-size:15px;font-weight:500;line-height:1.65;color:var(--t-body)}
+.lj-row:last-child{margin-bottom:0}.lj-row > i{font-style:normal}.lj-row b{color:var(--t-title);font-weight:700;margin-right:6px}
+.lj-row ul{margin:2px 0 0;padding:0;list-style:none}.lj-row li{position:relative;padding-left:20px;margin:2px 0}.lj-row li::before{content:"✓";position:absolute;left:2px;color:var(--accent);font-weight:800}
+.lj-acc{margin:10px 18px 0;border:1px solid var(--t-line);border-radius:14px;background:var(--surface)}
+.lj-acc > summary{cursor:pointer;list-style:none;padding:12px 14px;font-size:14px;font-weight:700;color:var(--t-title);display:flex;align-items:center;gap:8px;min-height:48px}
+.lj-acc > summary::-webkit-details-marker{display:none}
+.lj-acc > summary::before{content:"▶";font-size:11px;color:var(--accent);transition:transform .18s}
+.lj-acc[open] > summary::before{transform:rotate(90deg)}
+.lj-acc[open] > summary{border-bottom:1px solid var(--t-line)}
+.lj-acc > .lj-in{padding:4px 0 12px}
+.msg.ai .lj-sum{margin:0 0 10px}.msg.ai .lj-acc{margin:6px 0 0}.msg.ai .lj-acc > .lj-in{padding:6px 14px 12px}
+
+/* ===== 9차: 피드백 · 본점 승인 경고 · 면책 고지 · 단말 팁 ===== */
+.fb-row{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:8px 18px 14px}
+.fb-btn{border:1px solid var(--t-line);background:var(--surface);color:var(--t-body);border-radius:999px;padding:6px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:36px}
+.fb-btn:hover{border-color:var(--accent);color:var(--accent)}
+.msg.ai .fb-row{padding:6px 0 0}
+.hq-badge{display:flex;align-items:center;gap:6px;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;font-size:13.5px;font-weight:800;letter-spacing:-0.02em}
+:root[data-theme="dark"] .hq-badge{background:rgba(185,28,28,.18);border-color:rgba(252,165,165,.5);color:#fecaca}
+.tt-badge{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 18px 0;padding:8px 12px;border-radius:12px;background:var(--surface-2);border:1px dashed var(--t-line);font-size:12.5px;color:var(--t-cap)}
+.tt-badge b{color:var(--t-title);font-weight:700}.tt-badge span{padding:2px 8px;border-radius:999px;background:var(--surface);border:1px solid var(--t-line);color:var(--t-body);font-weight:600}
+.fx-disclaimer{position:fixed;left:0;right:0;bottom:0;z-index:35;padding:6px 14px calc(6px + env(safe-area-inset-bottom));text-align:center;font-size:11.5px;line-height:1.45;color:var(--t-cap);background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid var(--t-line);word-break:keep-all}
+body{padding-bottom:34px}
+@media (max-width:768px){.fx-disclaimer{left:10px;right:10px;bottom:calc(86px + env(safe-area-inset-bottom));padding:5px 10px;font-size:10.5px;border:1px solid var(--t-line);border-radius:12px;background:color-mix(in srgb,var(--surface) 92%,transparent)}body{padding-bottom:calc(130px + env(safe-area-inset-bottom))!important}}
+#fbDlg .wl-card{max-width:560px;width:calc(100vw - 32px);max-height:calc(100vh - 40px);overflow:auto}
+#fbDlg.hidden{display:none}
+#fbDlg textarea{width:100%;min-height:70px;resize:vertical}
+#fbDlg .ro{background:var(--surface-2);color:var(--t-cap);font-size:13px}
+.fb-prev{max-width:100%;max-height:180px;border-radius:10px;border:1px solid var(--t-line);margin-top:6px;display:block}
+.fbl{width:100%;border-collapse:collapse;font-size:13px}.fbl th,.fbl td{border-bottom:1px solid var(--t-line);padding:8px 6px;text-align:left;vertical-align:top}
+.fbl th{font-size:12px;color:var(--t-cap);font-weight:700;white-space:nowrap}.fbl td.c{color:var(--t-title);font-weight:600}
+.fbl img{max-width:120px;max-height:80px;border-radius:8px;border:1px solid var(--t-line);cursor:zoom-in}
+.tt-tbl{width:100%;border-collapse:collapse;font-size:13px}.tt-tbl td,.tt-tbl th{padding:5px 4px;border-bottom:1px solid var(--t-line);text-align:left}.tt-tbl input{width:100%;min-height:36px!important;font-size:13px!important;padding:4px 8px}
+@media (max-width:768px){.fbl thead{display:none}.fbl tr{display:block;border:1px solid var(--t-line);border-radius:14px;margin:0 0 10px;padding:8px 10px}.fbl td{display:block;border:0;padding:3px 0}.tt-tbl th:first-child{width:38%}}
 </style>
 <style id="sheetCss"></style>
 </head>
 <body>
 <div id="webLogin" class="wl hidden" role="dialog" aria-modal="true" aria-labelledby="wlT"><form id="wlForm" class="wl-card" autocomplete="on">
 <div class="wl-brand"><svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#003087"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b id="wlT">JB 환이</b><span>외환사업부 직원 로그인</span></div></div>
-<label class="fl"><span>행번 (사번 6자리)</span><input class="field" name="empno" type="text" inputmode="numeric" maxlength="40" placeholder="예: 219094" required autocomplete="username"></label>
+<div class="wl-guide" role="note"><b>사번(행번 6자리)을 입력해 주세요.</b><span>초기 비밀번호는 <strong>전북1%</strong> (영타: <strong>wjsqnr1%</strong>) 입니다.</span><small>처음 접속하는 사번도 바로 등록됩니다. 로그인한 뒤 「비밀번호 변경」으로 꼭 바꿔 주세요.</small></div><label class="fl"><span>행번 (사번 6자리)</span><input class="field" name="empno" type="text" inputmode="numeric" maxlength="40" placeholder="예: 219094" required autocomplete="username"></label>
 <label class="fl"><span>비밀번호</span><input class="field" name="password" type="password" required autocomplete="current-password"></label>
 <button class="btn" id="wlBtn" type="submit">로그인</button><p class="wl-st" id="wlSt" role="status"></p>
 <p class="wl-note">외환사업부 직원 전용입니다. 첫 로그인 후 왼쪽 아래 「비밀번호 변경」으로 꼭 바꿔 주세요.</p></form></div>
-<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>실무 Q&amp;A</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span id="webAcct">로그인 중…</span><span><button type="button" onclick="fxWebChangePw()">비밀번호 변경</button> <button type="button" onclick="fxWebLogout()">로그아웃</button></span></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><div class="m-head" id="mHead"><div class="m-avatar"><img src="jb_hwani_mascot.jpg" alt="" onerror="this.replaceWith(document.getElementById('mMascotTpl').content.cloneNode(true))"></div><div class="m-bubble" id="mBubble">오늘 외환 실무를 도와드릴게요!<small>JB 환이 · 외환사업부</small></div><div class="m-right"><button type="button" class="m-theme" id="mTheme" aria-label="화면 밝기 전환">🌙</button><span class="m-badge" id="mBadge"></span></div></div><template id="mMascotTpl"><svg class="m-masc" viewBox="0 0 120 120" aria-hidden="true"><defs><radialGradient id="mgB" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="#7cc0ff"/><stop offset=".55" stop-color="#2a6fe0"/><stop offset="1" stop-color="#173f9e"/></radialGradient><radialGradient id="mgG" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#fff1b8"/><stop offset=".6" stop-color="#f6bf3a"/><stop offset="1" stop-color="#d48d0c"/></radialGradient></defs><ellipse cx="60" cy="110" rx="30" ry="5" fill="#0b1b4a" opacity=".16"/><path d="M60 22v-8" stroke="#173f9e" stroke-width="4" stroke-linecap="round"/><circle cx="60" cy="11" r="8" fill="url(#mgG)"/><text x="60" y="15" text-anchor="middle" font-size="10" font-weight="800" fill="#8a5a00" font-family="sans-serif">₩</text><circle cx="60" cy="64" r="44" fill="url(#mgB)"/><ellipse cx="44" cy="40" rx="15" ry="9" fill="#fff" opacity=".35" transform="rotate(-25 44 40)"/><ellipse cx="45" cy="58" rx="8" ry="10" fill="#fff"/><ellipse cx="75" cy="58" rx="8" ry="10" fill="#fff"/><circle cx="46.5" cy="60" r="5" fill="#0d1b3e"/><circle cx="76.5" cy="60" r="5" fill="#0d1b3e"/><circle cx="48.5" cy="57.5" r="1.8" fill="#fff"/><circle cx="78.5" cy="57.5" r="1.8" fill="#fff"/><ellipse cx="34" cy="72" rx="6" ry="3.6" fill="#ff8fb1" opacity=".7"/><ellipse cx="86" cy="72" rx="6" ry="3.6" fill="#ff8fb1" opacity=".7"/><path d="M53 72q7 6 14 0" fill="none" stroke="#0d1b3e" stroke-width="3" stroke-linecap="round"/><circle cx="60" cy="92" r="11" fill="url(#mgG)"/><path d="M54.5 89.5h9l-2.4-2.4M65.5 94.5h-9l2.4 2.4" fill="none" stroke="#8a5a00" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></template><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><span class="tb-user hidden" id="webUser"></span><button type="button" class="busy-pill hidden" id="busyPill" data-nav="ask" title="진행 중인 화면으로 이동"><span class="spin" aria-hidden="true"></span><b id="busyL">AI 검토 중</b><em id="busyT"></em></button><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
+<div class="app"><aside class="side"><div class="side-brand"><svg class="emb" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#23408f"/><path d="M11 15.5h15.5l-4-4M29 24.5H13.5l4 4" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="31.5" cy="9.5" r="3" fill="#f2b632"/></svg><div><b>JB 환이</b><span>외환 AI 도우미 · 외환사업부</span></div></div><nav class="tabs" aria-label="메뉴"><button data-tab="home" class="on" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>홈</span></button><button data-tab="ask" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><span>AI 거래 검토</span></button><button data-tab="chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>실무 Q&amp;A</span></button><button data-tab="cases" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg><span>검토 내역</span></button><button data-tab="calc" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7"/></svg><span>한도 계산</span></button><button data-tab="forms" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>서식함</span></button><button data-tab="src" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span>원문 검색</span></button><button data-tab="info" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 19v2H6"/></svg><span>기준 법령</span></button><button data-tab="admin" class="hidden adm-nav" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M18 4.5l1.5 1.5L22 3.5"/></svg><span>관리</span></button></nav><div class="side-foot"><div class="web-acct"><span id="webAcct">로그인 중…</span><span><button type="button" onclick="fxWebChangePw()">비밀번호 변경</button> <button type="button" onclick="fxWebLogout()">로그아웃</button></span></div><button class="theme-btn" type="button" id="themeBtn" aria-label="화면 밝기 전환"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span></span></button>외국환거래법령 · 외국환거래규정 제2026-110호 · 취급지침 2026.1.28 기준<br>환율: 서울외국환중개 고시</div></aside><main class="main"><div class="m-head" id="mHead"><div class="m-who"><b id="mName">로그인 중…</b><span id="mSub">외환사업부</span></div><div class="m-acts"><button type="button" class="m-ib hidden" id="mRename" aria-label="이름 변경" onclick="fxWebChangeName()"><i aria-hidden="true">✏️</i><span>이름</span></button><button type="button" class="m-ib" id="mTheme" aria-label="화면 밝기 전환"><i aria-hidden="true">🌙</i><span>테마</span></button><button type="button" class="m-ib" id="mClaude" aria-label="Claude AI 로그인·연결"><i aria-hidden="true">🤖</i><span>Claude</span></button><button type="button" class="m-ib" id="mOut" aria-label="로그아웃"><i aria-hidden="true">🚪</i><span>로그아웃</span></button></div></div><template id="mMascotTpl"><svg class="m-masc" viewBox="0 0 120 120" aria-hidden="true"><defs><radialGradient id="mgB" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="#7cc0ff"/><stop offset=".55" stop-color="#2a6fe0"/><stop offset="1" stop-color="#173f9e"/></radialGradient><radialGradient id="mgG" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#fff1b8"/><stop offset=".6" stop-color="#f6bf3a"/><stop offset="1" stop-color="#d48d0c"/></radialGradient></defs><ellipse cx="60" cy="110" rx="30" ry="5" fill="#0b1b4a" opacity=".16"/><path d="M60 22v-8" stroke="#173f9e" stroke-width="4" stroke-linecap="round"/><circle cx="60" cy="11" r="8" fill="url(#mgG)"/><text x="60" y="15" text-anchor="middle" font-size="10" font-weight="800" fill="#8a5a00" font-family="sans-serif">₩</text><circle cx="60" cy="64" r="44" fill="url(#mgB)"/><ellipse cx="44" cy="40" rx="15" ry="9" fill="#fff" opacity=".35" transform="rotate(-25 44 40)"/><ellipse cx="45" cy="58" rx="8" ry="10" fill="#fff"/><ellipse cx="75" cy="58" rx="8" ry="10" fill="#fff"/><circle cx="46.5" cy="60" r="5" fill="#0d1b3e"/><circle cx="76.5" cy="60" r="5" fill="#0d1b3e"/><circle cx="48.5" cy="57.5" r="1.8" fill="#fff"/><circle cx="78.5" cy="57.5" r="1.8" fill="#fff"/><ellipse cx="34" cy="72" rx="6" ry="3.6" fill="#ff8fb1" opacity=".7"/><ellipse cx="86" cy="72" rx="6" ry="3.6" fill="#ff8fb1" opacity=".7"/><path d="M53 72q7 6 14 0" fill="none" stroke="#0d1b3e" stroke-width="3" stroke-linecap="round"/><circle cx="60" cy="92" r="11" fill="url(#mgG)"/><path d="M54.5 89.5h9l-2.4-2.4M65.5 94.5h-9l2.4 2.4" fill="none" stroke="#8a5a00" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></template><header class="topbar"><div class="tb-brand"><svg class="jb-mark" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#003087"/><path d="M14.5 12.5v13.2c0 3.1-1.7 4.8-4.4 4.8" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/><path d="M21 12.5h6.6c3 0 4.9 1.6 4.9 4.1 0 2.3-1.7 3.7-4.2 3.9 3 .2 5 1.8 5 4.6 0 3-2.2 4.9-5.6 4.9H21z" fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/><circle cx="36" cy="9" r="3" fill="#4fb3f5"/></svg><div class="tb-word"><b>JB 전북은행</b><span>외환사업부</span></div><span class="tb-app">JB 환이 · 외환 실무 대시보드</span></div><button type="button" class="tb-rename hidden" id="webRename" onclick="fxWebChangeName()">✏️ 이름 변경</button><span class="tb-user hidden" id="webUser"></span><button type="button" class="busy-pill hidden" id="busyPill" data-nav="ask" title="진행 중인 화면으로 이동"><span class="spin" aria-hidden="true"></span><b id="busyL">AI 검토 중</b><em id="busyT"></em></button><button type="button" class="tb-claude" id="claudeBtn"><span aria-hidden="true">🤖</span><b id="claudeBtnT">Claude AI 로그인 / 연결</b></button></header>
 <dialog id="claudeDlg" style="max-width:520px"><div class="d-hd"><b>Claude AI 연결</b><button class="btn ghost sm" id="claudeX" type="button">닫기</button></div><div class="d-bd" id="claudeB"></div></dialog>
 
 
 <div class="wrap single" id="tab-home">
-  <div class="m-quick" aria-label="바로가기"><button type="button" class="pri" data-mq="new">🔍 신규 거래 검토</button><button type="button" data-mq="fx">💱 오늘의 고시환율</button><button type="button" data-mq="zip">📁 서식 일괄 다운</button><button type="button" data-mq="calc">🧮 한도 계산</button><button type="button" data-mq="cases">📋 검토 내역</button></div>
+  <div class="m-home" aria-label="휴대폰 홈">
+<section class="m-card m-brief" aria-label="환이의 오늘 브리핑"><div class="m-avatar"><img src="jb_hwani_mascot.jpg" alt="" onerror="this.replaceWith(document.getElementById('mMascotTpl').content.cloneNode(true))"></div>
+<div class="m-bub"><span class="m-cap">환이의 오늘 외환 브리핑</span><p id="mBrief1">고시환율을 불러오고 있어요.</p><p id="mBrief2"></p></div></section>
+<section class="m-card" aria-label="주요 통화 고시환율"><div class="m-ch"><b>주요 통화 매매기준율</b><button type="button" class="m-more" data-mgo="calc">전체 환율 ›</button></div><div class="m-fx" id="mFx"></div><p class="m-foot" id="mFxFoot"></p></section>
+<section class="m-card" aria-label="바로 하기"><div class="m-ch"><b>바로 하기</b></div>
+<button type="button" class="m-act" data-mgo="judge"><i aria-hidden="true">⚡</i><span><b>외환 거래 4단계 즉시 판정</b><small>신고 불요 · 지정은행 확인 · 한국은행 · 재정경제부</small></span><em aria-hidden="true">›</em></button>
+<button type="button" class="m-act" data-mgo="qa"><i aria-hidden="true">💬</i><span><b>영업점 실무 Q&amp;A 빠른 질의</b><small>서류 확인법·전산 처리 등 무엇이든</small></span><em aria-hidden="true">›</em></button>
+<button type="button" class="m-act" data-mgo="limit"><i aria-hidden="true">🧮</i><span><b>연간 지급 누계 한도 즉시 계산</b><small>고시환율로 미화 환산해 한도와 비교</small></span><em aria-hidden="true">›</em></button>
+</section>
+<section class="m-card m-notice" aria-label="오늘의 핵심 규정 알림" id="mNotice"></section>
+</div>
   <div class="ticker" aria-label="오늘의 고시환율">
     <div class="tk-head"><div class="tk-t"><b>고시환율</b><span class="tk-date" id="homeFxDate">-</span></div><span id="homeFxSrc">서울외국환중개 최초고시 매매기준율</span></div>
     <div class="tk-items" id="homeFx"><span class="hint">불러오는 중…</span></div>
@@ -2460,7 +2653,7 @@ table.dt td small{display:block}
       <label class="sr" for="hqQ">거래 상황</label>
       <textarea id="hqQ" class="field" rows="5" placeholder="거래 상황을 적어 주세요. 예) 국내 거주 개인이 미국 유학 중인 자녀에게 학비 3만불을 송금"></textarea>
       <div class="qtags" aria-label="자주 쓰는 거래"><button type="button" class="qtag" data-qt="거주자 개인이 지급증빙서류 없이 해외로 미화 3만불을 송금하려고 합니다. 올해 같은 방식으로 보낸 금액은 없습니다.">지급증빙 미제출 송금</button><button type="button" class="qtag" data-qt="해외 주재원(해외체재자)에게 체재비 미화 2만불을 송금하려고 합니다.">해외체재자 경비</button><button type="button" class="qtag" data-qt="국내 거주 부모가 미국 유학 중인 자녀에게 학비와 생활비 미화 4만불을 송금하려고 합니다.">해외유학생 경비</button><button type="button" class="qtag" data-qt="거주자 법인이 해외에 현지법인을 새로 세우려고 미화 10만불을 송금해 지분 100%를 취득하려고 합니다.">해외직접투자</button><button type="button" class="qtag" data-qt="외국 법인이 기존 외국인투자기업에 증자 목적으로 미화 500만불을 송금하려고 합니다.">외국인투자(FDI) 증자</button><button type="button" class="qtag" data-qt="거주자 개인이 해외 주거용 부동산을 사려고 계약금 미화 5만불을 먼저 송금하려고 합니다.">해외부동산 취득</button><button type="button" class="qtag" data-qt="비거주자인 재외동포가 국내 예금 2억원을 본인 해외계좌로 송금하려고 합니다.">재외동포 재산반출</button><button type="button" class="qtag" data-qt="외국인 근로자가 국내 급여로 모은 1,500만원을 본국으로 송금하려고 합니다.">비거주자 국내소득 송금</button></div>
-      <div class="qa-foot"><span class="hint">고객 실명·주민등록번호·계좌번호는 적지 마세요. 번호 형식은 자동으로 가립니다.</span><span class="qa-act"><label class="btn ghost hq-att">증빙서류 첨부<input type="file" id="hqFile" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple hidden></label><button type="button" class="btn ghost" data-nav="ask">상세 입력</button><button type="button" class="btn" id="hqGo">Claude에서 검토</button></span></div>
+      <div class="qa-foot"><span class="hint">고객 실명·주민등록번호·계좌번호는 적지 마세요. 번호 형식은 자동으로 가립니다.</span><span class="qa-act"><label class="btn ghost hq-att">증빙서류 첨부<input type="file" id="hqFile" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple hidden></label><button type="button" class="btn ghost" data-nav="ask">상세 입력</button><button type="button" class="btn" id="hqGo">바로 판정</button></span></div>
       <div class="status" id="hqSt" role="status"></div>
     </section>
     <div class="cock-side">
@@ -2494,7 +2687,7 @@ table.dt td small{display:block}
   <div class="col">
     <div class="banner upd hidden" id="updBanner"></div>
     <div class="banner warn hidden" id="unavail"><b>AI 거래 검토는 Claude 버전에서 합니다.</b> 이 사이트에서는 한도 계산, 서식함, 원문 검색, 기준 법령, 팀 검토 내역, 서류 가림, 결과서 인쇄를 쓸 수 있습니다. 적은 질의는 복사해 두었다가 Claude 화면에 붙여 넣으면 됩니다.<br><a class="btn sm" href="https://claude.ai/artifact/DDnczYEeDHT7s2JAFxYb3J" target="_blank" rel="noopener">Claude에서 AI 검토 열기</a></div>
-    <section class="panel" aria-label="질의 작성">
+    <div class="lj-limit" role="note"><b>내장 판정 엔진으로 바로 판정합니다</b><p>외국환거래규정·취급지침 원문 조항에 연결된 규칙으로 판정하므로 로그인만으로 무료·무제한으로 쓸 수 있습니다. 다만 질의 문장을 AI처럼 이해하지는 못하고, 규칙에 없는 거래(증권·차입·외국인투자·환전 등)는 '확인 필요'로 표시하며, 2차 검토·심층 검토와 첨부 서류 읽기는 하지 않습니다.</p><p><b>심층적으로 확인하려면 Claude에 로그인해 Claude 버전에서 검토하세요.</b> 아래 버튼을 누르면 질의를 복사하고 Claude 버전을 엽니다. Claude에 로그인한 상태로 붙여 넣고 검토하면 AI가 원문을 찾아 읽고 2차 검토까지 합니다.</p><button type="button" class="btn ghost sm" data-claude-deep="ask">🤖 Claude로 심층 검토</button></div><section class="panel" aria-label="질의 작성">
       <div class="step">
         <div class="step-h"><span class="step-n">1</span><span class="step-t">거래유형</span><span class="hint">큰 분류를 고르면 세부 유형이 나옵니다. 모르면 '자동 판단'으로 두세요</span></div>
         <div class="types grp" id="types"></div>
@@ -2547,6 +2740,7 @@ table.dt td small{display:block}
 <div class="wrap single hidden" id="tab-chat">
   <section class="card chat-card">
     <div class="card-h"><h2>무엇이든 물어보세요</h2><span class="hint">서류 보는 법, 전산·창구 처리, 용어, 수출입·송금·환전 실무. 원문에 근거가 있으면 조문을 함께 보여 줍니다.</span></div>
+<div class="lj-limit" role="note"><b>내장 원문 검색으로 답합니다</b><p>질문과 관련된 조문·지침을 찾아 보여 주고, 거래 유형이 분명하면 판정 요약을 함께 보여 줍니다. AI처럼 문장으로 풀어 설명하지는 못합니다. 자세한 설명이 필요하면 Claude에 로그인해 Claude 버전에서 물어보세요.</p><button type="button" class="btn ghost sm" data-claude-deep="chat">🤖 Claude로 자세히 묻기</button></div>
     <div class="banner warn hidden" id="chatUnavail"></div>
     <div class="chat-log" id="chatLog" aria-live="polite"></div>
     <div class="chat-sugg" id="chatSugg"><button type="button" class="qtag" data-cq="수출입신고필증에서 자사 FOB와 타사 FOB 금액은 어떻게 확인하나요?">수출입신고필증에서 자사 FOB와 타사 FOB 금액은 어떻게 확인하나요?</button><button type="button" class="qtag" data-cq="송금방식 수입대금을 보낼 때 받아야 할 증빙서류는 무엇인가요?">송금방식 수입대금을 보낼 때 받아야 할 증빙서류는 무엇인가요?</button><button type="button" class="qtag" data-cq="외국인 근로자 급여 송금 때 취득경위 입증서류는 어떻게 확인하나요?">외국인 근로자 급여 송금 때 취득경위 입증서류는 어떻게 확인하나요?</button><button type="button" class="qtag" data-cq="해외직접투자 신고 후 사후관리 보고는 언제까지 받나요?">해외직접투자 신고 후 사후관리 보고는 언제까지 받나요?</button><button type="button" class="qtag" data-cq="수출대금을 미리 받았는데(선수금) 수출이 취소되면 어떻게 처리하나요?">수출대금을 미리 받았는데(선수금) 수출이 취소되면 어떻게 처리하나요?</button><button type="button" class="qtag" data-cq="환전할 때 여권에 매각 사실을 적어야 하는 경우는?">환전할 때 여권에 매각 사실을 적어야 하는 경우는?</button></div>
@@ -2597,7 +2791,7 @@ table.dt td small{display:block}
   </section>
 </div></div>
 
-<div class="wrap single hidden" id="tab-admin"><section class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">이용자 관리</h2><div class="row"><input class="field" id="admReason" placeholder="차단 사유 (선택)" style="width:200px;padding:5px 10px"><button class="btn ghost sm" id="admEmb" type="button">엠블럼 꾸미기</button></div></div><p class="hint">이 메뉴는 소유자에게만 보입니다. 페이지를 연 적이 있는 직원과 검토 건수를 보여 줍니다. 차단하면 그 직원은 AI 검토 기능을 쓸 수 없고, 화면에 이용 제한 안내가 뜹니다. 완전히 접근을 막으려면 아티팩트 공유 설정에서 그 직원을 빼 주세요.</p><div class="stat-tiles adm-stats" id="admStats"></div><div class="status" id="admSt" role="status"></div><div id="admBody" style="margin-top:10px"><p class="hint">불러오는 중…</p></div></section><section class="panel" style="margin-top:16px"><div class="row" style="justify-content:space-between"><h2 style="margin:0">대표 거래 일괄 AI 검토</h2><span class="hint">관리자 전용 · 본인 Claude 사용량이 차감됩니다</span></div>
+<div class="wrap single hidden" id="tab-admin"><section class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">이용자 관리</h2><div class="row"><input class="field" id="admReason" placeholder="차단 사유 (선택)" style="width:200px;padding:5px 10px"><button class="btn ghost sm" id="admEmb" type="button">엠블럼 꾸미기</button></div></div><p class="hint">이 메뉴는 소유자에게만 보입니다. 페이지를 연 적이 있는 직원과 검토 건수를 보여 줍니다. 차단하면 그 직원은 AI 검토 기능을 쓸 수 없고, 화면에 이용 제한 안내가 뜹니다. 완전히 접근을 막으려면 아티팩트 공유 설정에서 그 직원을 빼 주세요.</p><div class="stat-tiles adm-stats" id="admStats"></div><div class="status" id="admSt" role="status"></div><div id="admBody" style="margin-top:10px"><p class="hint">불러오는 중…</p></div></section><section class="panel" style="margin-top:16px"><div class="row" style="justify-content:space-between"><h2 style="margin:0">대표 거래 일괄 AI 검토</h2><span class="hint">관리자 전용 · 내장 판정 엔진으로 바로 처리</span></div>
 <p class="hint">아래 거래를 실제 AI 거래 검토로 한 건씩 차례대로 돌리고, 결과를 팀 검토 내역에 저장합니다. 추가 확인 질문은 건너뛰고 바로 검토합니다. 한 건에 1~2분(2차 검토 포함)쯤 걸리니 끝날 때까지 이 창을 열어 두세요. 웹 사이트에는 매시간 자동 동기화로 반영됩니다.</p>
 <div class="row" style="gap:8px;margin:8px 0"><label class="fl" style="flex:1"><span>지점</span><input class="field" id="bBranch" value="외환사업부"></label><label class="fl" style="flex:1"><span>담당자</span><input class="field" id="bStaff" value="추현수"></label></div>
 <label class="fl"><span>검토할 거래 <em>한 줄에 한 건</em></span><textarea class="field" id="bList" rows="10">거주자 개인이 해외 지인에게 4천불을 증빙 없이 송금. 올해 무증빙 송금 누계가 이미 10만불을 넘음.
@@ -2639,7 +2833,8 @@ table.dt td small{display:block}
   <p class="hint">매일 아침 국가법령정보센터 현행 버전을 자동 점검합니다. 조문 원문 전체는 새 PDF를 받아 갱신합니다.</p>
 </section></div>
 
-</main><nav class="m-tabbar" id="mTabbar" aria-label="하단 메뉴">
+</main><div class="fx-disclaimer" role="note">JB 환이는 외환 실무 보조 도구입니다.</div>
+<nav class="m-tabbar" id="mTabbar" aria-label="하단 메뉴">
 <button type="button" data-m="home"><i aria-hidden="true">🏠</i><span>홈</span></button>
 <button type="button" data-m="ask"><i aria-hidden="true">🔍</i><span>AI 검토</span></button>
 <button type="button" data-m="chat"><i aria-hidden="true">💬</i><span>실무 Q&amp;A</span></button>
@@ -2654,7 +2849,7 @@ table.dt td small{display:block}
 <button type="button" data-ms="calc"><i aria-hidden="true">🧮</i>한도 계산</button>
 <button type="button" data-ms="admin" class="hidden" id="mAdm"><i aria-hidden="true">👥</i>이용자 관리</button>
 <button type="button" data-ms="claude"><i aria-hidden="true">🤖</i>Claude AI 연결</button>
-<button type="button" data-ms="pw"><i aria-hidden="true">🔑</i>비밀번호 변경</button>
+<button type="button" data-ms="rename" class="hidden" id="mRenameS"><i aria-hidden="true">✏️</i>이름 변경</button><button type="button" data-ms="pw"><i aria-hidden="true">🔑</i>비밀번호 변경</button>
 <button type="button" data-ms="logout" class="warn"><i aria-hidden="true">🚪</i>로그아웃</button>
 </div></dialog>
 </div>
@@ -3221,18 +3416,98 @@ $("#stopBtn").onclick = () => ctl && ctl.abort();
 $("#askBtn").onclick = () => start();
 $("#qbox").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) start(); });
 
+/* ---------- 송금 목적 선택 (내장 판정 엔진) ---------- */
+const PURPOSES = [["out_trade","📦 수입대금 (인보이스·B/L)"],["out_gen","🎁 증여·생활비 (증빙 없음)"],["out_travel","🎓 유학·체재비"],["out_service","🧾 용역대가·수수료"],["out_frgn","👷 외국인 급여 송금"],["out_emig","✈️ 해외이주비·재산반출"],["out_odi","🏭 해외직접투자"],["out_re","🏠 해외부동산"],["out_gen","❔ 잘 모르겠음 (일반 송금)"]];
+function purposePick(q, facts0, masked, ctx){
+  $("#qbox").value = ""; piiCheck();
+  const box = document.createElement("article"); box.className = "result";
+  box.innerHTML = `<div class="r-head"><span class="tag">해외 당발송금 · 목적 확인</span><div class="r-q">${esc(q)}</div>${facts0 ? `<div class="r-facts">${esc(facts0)}</div>` : ""}</div><div class="clar"><div class="ql">송금 목적을 골라 주세요</div><div class="hint">목적에 따라 신고 여부와 필요 서류가 달라집니다.</div><div class="chips pp-chips">` + PURPOSES.map(([k, l]) => `<button class="chip" type="button" data-pp="${k}">${esc(l)}</button>`).join("") + `</div></div>`;
+  $("#thread").prepend(box); box.scrollIntoView({ behavior:"smooth", block:"start" });
+  box.addEventListener("click", e => { const b = e.target.closest("[data-pp]"); if (!b) return; const t = TYPES.find(x => x.k === b.dataset.pp); box.remove(); ask(t, q, facts0, { auto:true, note:masked, ctx }); });
+}
+
+
+/* ---------- 3초 요약 카드 + 상세 법령 접기 ---------- */
+function ljSecs(body){
+  const out = {}; let cur = null;
+  String(body || "").split("\n").forEach(l => { const m = l.match(/^#{2,3}\s*(.+?)\s*$/); if (m){ cur = m[1].trim(); out[cur] = []; } else if (cur && l.trim()) out[cur].push(l.trim()); });
+  return out;
+}
+const ljClean = s => String(s || "").replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").replace(/\s*\[[^\]]+\]/g, "").replace(/〔[^〕]*〕/g, "").replace(/\*\*/g, "").trim();
+function ljSummaryHTML(text){
+  const p = splitVerdict(text || ""), v = p.v || {}, sc = ljSecs(p.body || text);
+  const pick = re => { for (const k in sc) if (re.test(k)) return sc[k]; return []; };
+  const tier = tierOf(v), g = guardOf(v, text);
+  const concl = ljClean(v["요지"] || pick(/결론/)[0] || "");
+  const docs = pick(/제출서류|징구|필요\s*서류/).map(ljClean).filter(x => x && !/^해당 없음/.test(x));
+  const warn = ljClean(pick(/유의/)[0] || "") || (g.amber && g.reasons.length ? "본점 확인 필요 — " + g.reasons[0] : "") || ljClean(pick(/추가 확인/)[0] || "");
+  const tl = tier === 2 && /불요/.test(String(v["지정거래외국환은행"] || "")) ? (/신고 필요|신고수리/.test(String(v["신고여부"] || "")) ? "② 외국환은행 신고" : "② 외국환은행 확인") : TIER_L[tier];
+  if (!concl && !docs.length) return "";
+  return `<section class="lj-sum" aria-label="3초 핵심 요약"><div class="lj-sum-top">${tier ? `<span class="tg t${tier}">${esc(tl)}</span>` : `<span class="tg">확인 필요</span>`}${v["신고여부"] ? `<span class="tg">${esc(v["신고여부"])}</span>` : ""}${g.amber ? `<span class="tg amb">⚠ 본점 확인</span>` : ""}</div>`
+    + (concl ? `<div class="lj-row"><i aria-hidden="true">📌</i><div><b>결론</b>${esc(concl)}</div></div>` : "")
+    + (docs.length ? `<div class="lj-row"><i aria-hidden="true">📋</i><div><b>필수 징구 서류</b><ul>${docs.slice(0, 3).map(d => `<li>${esc(d.length > 70 ? d.slice(0, 68) + "…" : d)}</li>`).join("")}</ul>${docs.length > 3 ? `<small>외 ${docs.length - 3}건은 아래 상세에서 확인하세요</small>` : ""}</div></div>` : "")
+    + (warn ? `<div class="lj-row"><i aria-hidden="true">⚠️</i><div><b>유의</b>${esc(warn.length > 110 ? warn.slice(0, 108) + "…" : warn)}</div></div>` : "")
+    + `</section>`;
+}
+const HQ_TAG = /해외직접투자|해외부동산|대출·차입|증권·파생|상계·제3자|외국인투자|차입금|해외예금|해외투자·부동산 회수/;
+const HQ_LAW = /제5-(4|5|8|10|11)조|제7-\d+조|제9-\d+조|시행령 제8조/;
+function needHQ(v, tag){ v = v || {}; return HQ_TAG.test(tag || "") || HQ_LAW.test(String(v["근거조문"] || "")) || /한국은행|재정경제부|신고수리|금융감독원/.test(String(v["신고기관"] || "") + String(v["신고유형"] || "")); }
+function fxDecorate(box, t, q, text){
+  box.dataset.fbq = q; box.dataset.fba = String(text || "").slice(0, 20000); box.dataset.tk = (t && t.k) || "";
+}
+function fxAfterLift(box){
+  const s = box.querySelector(".lj-sum"), v = splitVerdict(box.dataset.fba || "").v || {}, tag = (box.querySelector(".tag") || {}).textContent || "";
+  if (s && needHQ(v, tag) && !s.querySelector(".hq-badge")) s.insertAdjacentHTML("afterbegin", '<div class="hq-badge" role="alert">⚠️ 외환사업부 본점 최종 승인 필요 건</div>');
+  if (!box.querySelector(":scope > .fb-row")) box.insertAdjacentHTML("beforeend", '<div class="fb-row"><button type="button" class="fb-btn" data-fb-box>💬 피드백 / 오류 제보</button></div>');
+}
+function liftSummary(box, text){
+  const hd = box.querySelector(".r-head"); if (!hd || box.querySelector(".lj-sum")) return;
+  const html = ljSummaryHTML(text); if (!html) return;
+  hd.insertAdjacentHTML("afterend", html);
+  const v = splitVerdict(text).v || {}, law = String(v["근거조문"] || "").split(/[;；]/)[0].trim();
+  const det = document.createElement("details"); det.className = "lj-acc";
+  det.innerHTML = `<summary>관련 법령 조문 및 세부 규정 보기${law ? ` (${esc(law)} 등)` : ""}</summary><div class="lj-in"></div>`;
+  const inner = det.querySelector(".lj-in");
+  ["[data-v]", ".ag-steps", "[data-a]", ".more-panel", "[data-e]"].forEach(s => { const n = box.querySelector(s); if (n) inner.append(n); });
+  box.querySelectorAll(".r-body ~ .more, [data-more]").forEach(n => inner.append(n));
+  box.querySelector(".lj-sum").after(det);
+  const t = box.querySelector("[data-t]"); if (t) det.after(t);
+  try { fxAfterLift(box); } catch {}
+}
+
 /* ---------- 1단계: 빠진 사실관계 확인 ---------- */
 const BLOCK = ["not_granted","sampling_disabled","not_declared","capability_disabled"];
 let lastType = null, busy = false;
 function triageList(){ return curType.grp ? TYPES.filter(t => t.g === curType.k && !t.grp) : TYPES.filter(t => t.g && !t.grp); }
+// 자동 분류: 무역 거래 키워드를 먼저 보고, '해외·송금·지급'처럼 어디에나 나오는 말은 점수에서 뺍니다
+const GT_STOP = new Set(["해외", "외국", "지급", "송금", "거주자", "대금", "신고", "확인", "서류", "외화", "수령"]);
+const GT_PRIO = [
+  { k:"etc_net", re:/제?\s*3자\s*(지급|에게|앞|송금|명의)|상계|네팅|netting/i },
+  { k:"out_trade", re:/인보이스|invoice|물품\s*대금|무역|L\s*\/\s*C|엘씨|신용장|B\s*\/\s*L|선하증권|선적|상업\s*송장|송장|오퍼\s*시트|offer\s*sheet|purchase\s*order|통관|수입\s*(대금|물품|신고|거래|결제|업체|품|하는|한|할)|물품을?\s*수입|수입신고필증/i },
+  { k:"in_trade", re:/수출\s*(대금|물품|거래|신고)|수출대금|선수금\s*(을|를)?\s*(받|수령)/ },
+  { k:"out_emig", re:/이주비|해외\s*이주|재외동포|재산\s*반출|국내\s*재산|영주권|시민권/ },
+  { k:"out_re", re:/부동산|주택|아파트|콘도|토지|건물|빌라|임차\s*보증금/ },
+  { k:"out_odi", re:/현지\s*법인|해외\s*직접\s*투자|해외\s*지사|지분\s*(취득|투자)|증액\s*투자/ },
+  { k:"out_frgn", re:/외국인.{0,12}(급여|월급|임금|보수|퇴직|월급|소득)|(급여|월급|임금|퇴직금).{0,12}외국인|비거주자.{0,8}(송금|지급)/ },
+  { k:"out_travel", re:/유학|어학\s*연수|재학|등록금|학비|해외\s*체재|파견|주재원|해외\s*연수/ },
+  { k:"out_gen", re:/가족|부모|자녀|아들|딸|형제|친척|지인|생활비|증여|용돈|축의금|부의금/ },
+  { k:"out_service", re:/용역|수수료|로열티|컨설팅|라이선스|라이센스|광고비|소프트웨어\s*(대금|사용료)/ },
+];
+const GT_RE_NEED = /부동산|주택|아파트|콘도|토지|건물|빌라|임차/;
+function gtPrio(q, list){ for (const p of GT_PRIO){ const t = p.re.test(q) && list.find(x => x.k === p.k); if (t) return t; } return null; }
 function guessType(q, list){
+  list = list || TYPES.filter(x => x.g && !x.grp);
+  guessType.score = 0; guessType.prio = false;
+  const p = gtPrio(q, list); if (p){ guessType.score = 9; guessType.prio = true; return p; }
   let best = null, bs = 0;
-  for (const t of (list || TYPES.filter(x => x.g && !x.grp))){
+  for (const t of list){
     if (!t.kw) continue; let s = 0;
-    for (const w of t.kw.split(/\s+/)) if (w.length >= 2 && q.includes(w)) s += Math.min(w.length, 4);
+    for (const w of t.kw.split(/\s+/)) if (w.length >= 2 && !GT_STOP.has(w) && q.includes(w)) s += Math.min(w.length, 4);
+    if (t.k === "out_re" && !GT_RE_NEED.test(q)) s = 0;
     if (s > bs){ bs = s; best = t; }
   }
-  return best || (list && list[0]) || TYPES.find(t => t.k === "etc");
+  guessType.score = bs;
+  return best || list.find(x => x.k === "out_gen") || list[0] || TYPES.find(t => t.k === "etc");
 }
 async function start(){
   const raw = $("#qbox").value.trim();
@@ -3250,7 +3525,8 @@ async function start(){
   catch (e) { if (BLOCK.includes(e && e.code)){ setStatus(fail(e)); progDone(); $("#askBtn").disabled = blocked; return; } }
   $("#askBtn").disabled = blocked;
   let t = curType, auto = false;
-  if (t.k === "auto" || t.grp){ auto = true; const L = triageList(); t = (tri && L.find(x => x.k === tri.type)) || guessType(q, L); }
+  if (t.k === "auto" || t.grp){ auto = true; const L = triageList(); t = (tri && L.find(x => x.k === tri.type)) || guessType(q, L);
+    if (window.__LOCAL && t.g === "out" && guessType.score === 0){ progDone(); setStatus(masked); return purposePick(q, facts0, masked, ctx); } }
   const qs = (tri && tri.need_more && Array.isArray(tri.questions)) ? tri.questions.filter(x => x && x.label).slice(0, 4) : [];
   if (!qs.length) return ask(t, q, facts0, { auto, note: masked, ctx });
   progDone(); setStatus(masked); $("#qbox").value = ""; piiCheck();
@@ -3415,13 +3691,16 @@ async function ask(t, q, facts, o = {}){
       xEl.querySelector("[data-chk]").onclick = () => saveChecklist(type, q, facts, last, setStatus);
       xEl.querySelector("[data-copy]").onclick = ev => copyResult(type, q, facts, last, ev.currentTarget);
       const dz = xEl.querySelector("[data-deep]"); if (dz) dz.onclick = () => ask(t, q, facts, { deep:true, auto:o.auto, ctx:o.ctx, replace:box, prevV:st });
+      if (window.__LOCAL){ const cb = document.createElement("button"); cb.type = "button"; cb.className = "btn ghost sm"; cb.textContent = "🤖 Claude로 심층 검토"; cb.title = "질의를 복사하고 Claude 버전을 엽니다. Claude에 로그인한 상태로 붙여 넣으면 AI가 심층 검토합니다."; cb.onclick = () => toClaude(`[거래유형] ${type}\n${q}${facts ? "\n" + facts : ""}`, setStatus); xEl.append(cb); }
       const cx = o.ctx || {};
       const rec = { type, typeKey:t.k, q, facts, answer:last, custName:cx.custName || "", branch:cx.branch || "", staff:cx.staff || "", payer:cx.payer || "", payee:cx.payee || "", payeeCountry:cx.payeeCountry || "", cur:cx.cur || "", amt:cx.amt || "", usd:cx.usd || 0, attachments:att.names, verdict:v, refs:ids.slice(0, 40), deep, rev:!!o.replace, conf:{ cited:cf.cited, gen:cf.gen, level:cf.label }, auto:!!o.auto, createdAt:new Date().toISOString(), createdMs:Date.now() };
       const mp = morePanel({ t, q, facts, answer:last, auto:o.auto, ctx:o.ctx, box }); if (mp) aEl.after(mp);
+      try { fxDecorate(box, t, q, last); } catch {}
+      try { liftSummary(box, last); if (mp && mp.parentNode !== box.querySelector(".lj-in") && box.querySelector(".lj-in")) box.querySelector(".lj-in").append(mp); } catch {}
       const savedP = saveCase(rec);
       const r2host = document.createElement("div"); r2host.className = "r2"; xEl.before(r2host);
       const r2c = { type, q, facts, answer:last, deep };
-      runReview2(r2host, r2c, savedP);
+      if (window.__LOCAL) r2host.remove(); else runReview2(r2host, r2c, savedP);
       savedP.then(r => { extra = confHTML + `<span class="saved">${r.where === "local" ? (r.denied ? "링크 보기 권한이라 팀 내역에는 올라가지 않고 이 기기에만 저장했습니다" : "이 브라우저에 저장했습니다") : "검토 내역에 저장했습니다"}</span><button class="btn ghost sm" type="button" data-case="${esc(r.id)}">내역에서 보기</button>`; tools(); })
         .catch(e => { extra = confHTML + `<span class="saved">${e && e.code === "quota_exceeded" ? "저장 공간이 가득 차 내역에 저장하지 못했습니다" : "내역에 저장하지 못했습니다"}</span>`; tools(); });
     }
@@ -4486,10 +4765,22 @@ ${AMEND.join("\n")}`;
 let CHAT = (() => { try { return JSON.parse(localStorage.getItem("fxdesk.chat") || "[]"); } catch { return []; } })(), chatBusy = false, chatCtl = null;
 function chatSave(){ try { localStorage.setItem("fxdesk.chat", JSON.stringify(CHAT.slice(-30))); } catch {} }
 function chatRefs(text){ const re = new RegExp("\\[" + REF_RE + "\\]", "g"), out = []; let m; while ((m = re.exec(text || ""))) if (byId[m[1]] && !out.includes(m[1])) out.push(m[1]); return out; }
+function chatBody(text){
+  const a = text.indexOf("<<요약>>"), b = text.indexOf("<</요약>>");
+  if (a < 0 || b < a) return md(text);
+  const v = {}; text.slice(a + 6, b).split("\n").forEach(l => { const m = l.match(/^\s*([^:：]+)[:：]\s*(.*)$/); if (m) v[m[1].trim()] = m[2].trim(); });
+  const docs = (v["서류"] || "").split("|").map(s => s.trim()).filter(Boolean), rest = text.slice(b + 7).trim();
+  const card = `<section class="lj-sum" aria-label="3초 핵심 요약">${v["구분"] ? `<div class="lj-sum-top"><span class="tg">${esc(v["구분"])}</span></div>` : ""}`
+    + (v["결론"] ? `<div class="lj-row"><i aria-hidden="true">📌</i><div><b>결론</b>${esc(v["결론"])}</div></div>` : "")
+    + (docs.length ? `<div class="lj-row"><i aria-hidden="true">📋</i><div><b>필수 징구 서류</b><ul>${docs.slice(0, 3).map(d => `<li>${esc(d)}</li>`).join("")}</ul>${docs.length > 3 ? `<small>외 ${docs.length - 3}건은 아래 상세에서</small>` : ""}</div></div>` : "")
+    + (v["유의"] ? `<div class="lj-row"><i aria-hidden="true">⚠️</i><div><b>유의</b>${esc(v["유의"])}</div></div>` : "") + `</section>`;
+  const hq = /③|④|신고수리|한국은행|재정경제부/.test(v["구분"] || "") || HQ_LAW.test("규정 " + (v["근거"] || "").replace(/^규정\s*/, ""));
+  return (hq ? '<div class="hq-badge" role="alert">⚠️ 외환사업부 본점 최종 승인 필요 건</div>' : "") + card + (rest ? `<details class="lj-acc"><summary>관련 법령 조문 및 세부 규정 보기${v["근거"] ? ` (${esc(v["근거"])} 등)` : ""}</summary><div class="lj-in">${md(rest)}</div></details>` : "");
+}
 function chatMsgHTML(m){
   if (m.role === "user") return `<div class="msg me"><div class="bub">${esc(m.text).replace(/\n/g, "<br>")}</div></div>`;
   const refs = chatRefs(m.text);
-  return `<div class="msg ai"><span class="av" aria-hidden="true">환</span><div class="bub">${m.text ? md(m.text) : ""}${refs.length ? `<div class="chat-refs"><span>근거 원문</span>${refs.map(id => `<a class="ref" data-id="${esc(id)}">${esc(id)}</a>`).join("")}</div>` : ""}${m.err ? `<p class="chat-err">${esc(m.err)}</p>` : ""}</div></div>`;
+  return `<div class="msg ai"><span class="av" aria-hidden="true">환</span><div class="bub">${m.text ? chatBody(m.text) : ""}${m.text && !m.err ? `<div class="fb-row"><button type="button" class="fb-btn" data-fb-chat="${CHAT.indexOf(m)}">💬 피드백 / 오류 제보</button></div>` : ""}${refs.length ? `<div class="chat-refs"><span>근거 원문</span>${refs.map(id => `<a class="ref" data-id="${esc(id)}">${esc(id)}</a>`).join("")}</div>` : ""}${m.err ? `<p class="chat-err">${esc(m.err)}</p>` : ""}</div></div>`;
 }
 function chatRender(pendingText, stepTxt){
   const log = $("#chatLog");
@@ -4723,7 +5014,6 @@ $("#hqGo").onclick = () => {
   const q = $("#hqQ").value.trim();
   if (!q){ $("#hqSt").textContent = "거래 상황을 먼저 적어 주세요."; $("#hqQ").focus(); return; }
   if (busy){ $("#hqSt").textContent = "검토가 진행 중입니다. 끝난 뒤 다시 눌러 주세요."; return; }
-  if (window.__WEB){ toClaude(q, t => { $("#hqSt").textContent = t; }); return; }
   $("#qbox").value = q; $("#qbox").dispatchEvent(new Event("input")); $("#hqQ").value = ""; $("#hqSt").textContent = "";
   showTab("ask"); window.scrollTo(0, 0); start();
 };
@@ -4855,13 +5145,14 @@ try { const l = JSON.parse(localStorage.getItem("fxdesk.emblem") || "null"); if 
 })();
 
 /* ---------- 관리 (소유자 전용): 이용자 목록·차단 ---------- */
+function kstStamp(ms){ return new Date((ms || Date.now()) + 9 * 3600e3).toISOString().replace("T", " ").slice(0, 19); }
 let ADM_USERS = {}, ADM_BLOCK = {};
 function admRender(){
   const host = $("#admBody"); if (!host || !window.__owner) return;
   const ids = new Set([...Object.keys(ADM_USERS), ...Object.keys(ADM_BLOCK), ...allCases().map(c => c.author).filter(Boolean)]);
   const m0 = TODAY.slice(0, 7);
   const rows = [...ids].map(id => { const u = ADM_USERS[id] || {}, cs = allCases().filter(c => c.author === id);
-    const label = u.name || (u.empno ? "행번 " + u.empno : "") || String(u.email || "").split("@")[0] || (cs.some(c => c.src === "claude") ? "Claude 버전 검토 기록" : "") || "이름 미등록"; return { id, label, emp:u.empno || "", first:u.firstSeen || "", last:u.lastSeen || "", n:cs.length, nm:cs.filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, lastRev:cs.length ? kstDay(cs[0].createdMs) : "", blocked:!!ADM_BLOCK[id], why:(ADM_BLOCK[id] || {}).reason || "" }; })
+    const label = u.name || (u.empno ? "행번 " + u.empno : "") || String(u.email || "").split("@")[0] || (cs.some(c => c.src === "claude") ? "Claude 버전 검토 기록" : "") || "이름 미등록"; return { id, label, emp:u.empno || "", first:u.firstSeenAt || u.firstSeen || "", last:u.lastSeenAt || u.lastSeen || "", n:cs.length, nm:cs.filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, lastRev:cs.length ? kstStamp(Math.max(...cs.map(c => c.createdMs || 0))) : "", blocked:!!ADM_BLOCK[id], why:(ADM_BLOCK[id] || {}).reason || "" }; })
     .sort((a, b) => (b.last || b.lastRev).localeCompare(a.last || a.lastRev));
   const act = rows.filter(r => !r.blocked).length;
   $("#admStats").innerHTML = [["전체 이용자", rows.length, ""], ["이용 중", act, "ok"], ["차단", rows.length - act, "warn"], ["이번 달 검토", allCases().filter(c => kstDay(c.createdMs).slice(0, 7) === m0).length, ""]].map(([k, v, cl]) => `<div class="st ${cl}"><span>${k}</span><b>${v}</b></div>`).join("");
@@ -4892,7 +5183,7 @@ document.addEventListener("click", e => {
   try { owner = !!(await u.isOwner()); } catch {}
   if (!id) return;
   // 이용 기록: 하루에 한 번만 갱신
-  try { const ref = d.doc("users/" + id), s = await ref.get(); if (!s.exists) await ref.set({ firstSeen:TODAY, lastSeen:TODAY }); else if ((s.data() || {}).lastSeen !== TODAY) await ref.update({ lastSeen:TODAY }); } catch {}
+  try { const ref = d.doc("users/" + id), s = await ref.get(), now = kstStamp(); if (!s.exists) await ref.set({ firstSeen:TODAY, lastSeen:TODAY, firstSeenAt:now, lastSeenAt:now }); else await ref.update({ lastSeen:TODAY, lastSeenAt:now }); } catch {}
   // 차단 확인
   if (!owner) d.doc("blocked/" + id).onSnapshot(s => { if (s.exists){ blocked = true; $("#blockWall").classList.remove("hidden"); $("#askBtn").disabled = true; } }, () => {});
   if (!owner) return;
@@ -4921,15 +5212,58 @@ document.addEventListener("click", e => {
   window.mSync = mSync;
   function given(n){ n = String(n || "").replace(/\s+(대리|과장|차장|부장|주임|계장|팀장|행원)$/, ""); return /^[가-힣]{3}$/.test(n) ? n.slice(1) : n; }
   function me(){
-    const m = window.FX_ME || {}, nm = given(m.name);
-    $("#mBubble").innerHTML = `${nm ? esc(nm) + "님, " : ""}오늘 외환 실무를 도와드릴게요!<small>JB 환이 · 외환사업부</small>`;
-    $("#mBadge").textContent = m.empno ? "행번 " + m.empno : "";
+    const m = window.FX_ME || {};
+    const known = m.name && !/님$/.test(m.name);
+    $("#mName").textContent = m.name ? m.name + (known && m.title ? " " + m.title : "") : "로그인 중…";
+    $("#mSub").textContent = "외환사업부" + (known && m.empno ? " · " + m.empno : "");
     $("#mAcct").innerHTML = m.name ? `<b>${esc(m.name)}</b>${m.empno ? " · 행번 " + esc(m.empno) : ""}` : "로그인 정보를 불러오는 중…";
     $("#mAdm").classList.toggle("hidden", !window.__owner);
   }
+  document.addEventListener("fxme", me);
+  const rnSync = () => { const can = !!(window.FX_ME && FX_ME.canRename); ["#webRename", "#mRename", "#mRenameS"].forEach(s => { const e = $(s); if (e) e.classList.toggle("hidden", !can); }); };
+  document.addEventListener("fxme", rnSync); setTimeout(rnSync, 1500);
+  $("#mClaude").onclick = () => $("#claudeBtn").click();
+  $("#mOut").onclick = () => { if (confirm("로그아웃할까요?")) window.fxWebLogout && fxWebLogout(); };
+  const MTIPS = [
+    "증빙 없는 해외송금은 모든 금융기관 합산 연간 미화 10만불까지예요. 한국은행 ORIS로 누계를 꼭 확인하세요.",
+    "증빙서류 미제출 지급은 거래외국환은행 지정 대상이 아니에요.",
+    "해외이주비는 관할세무서장이 발급한 자금출처확인서 범위 안에서 지급하고, 거래외국환은행 1곳을 지정해요.",
+    "재외동포 국내재산 반출은 부동산매각자금확인서나 예금등 자금출처확인서를 확인하고, 거래외국환은행을 지정해요.",
+    "자금출처확인서 '유효기간 1년' 기준은 규정 원문에 없어요. 판정 근거로 쓰지 마세요."
+  ];
+  const FXN = { USD:["🇺🇸","미국 달러"], JPY:["🇯🇵","일본 엔"], EUR:["🇪🇺","유로"], CNH:["🇨🇳","중국 위안"] };
+  function mHome(){
+    const doy = Math.floor((Date.parse(TODAY + "T00:00:00Z") - Date.parse(TODAY.slice(0, 4) + "-01-01T00:00:00Z")) / 864e5);
+    $("#mBrief2").innerHTML = `<b>창구 포인트</b>${esc(MTIPS[doy % MTIPS.length])}`;
+    if (RATES && RATES.rates[RATES.latest]){
+      const d = RATES.latest, r = RATES.rates[d], i = RDAYS.indexOf(d), p = i > 0 ? RATES.rates[RDAYS[i - 1]] : null;
+      const day = d === TODAY ? "오늘" : `${+d.slice(5, 7)}월 ${+d.slice(8)}일`, du = p && p.USD ? r.USD - p.USD : 0;
+      $("#mBrief1").textContent = `${day} 미국 달러 매매기준율은 ${fmtN(r.USD)}원으로, 전 영업일보다 ${du ? fmtN(Math.abs(du)) + "원 " + (du > 0 ? "올랐어요." : "내렸어요.") : "변동이 없어요."}`;
+      $("#mFx").innerHTML = ["USD","JPY","EUR","CNH"].filter(c => r[c]).map(c => {
+        const df = p && p[c] != null ? r[c] - p[c] : 0, pc = p && p[c] ? df / p[c] * 100 : 0, cl = df > 0 ? "up" : df < 0 ? "down" : "flat";
+        return `<div class="m-tile"><span class="c"><span aria-hidden="true">${FXN[c][0]}</span>${c}${unitOf(c) > 1 ? ` <small>(${unitOf(c)})</small>` : ""}</span><span class="v">${fmtN(r[c])}</span><span class="d ${cl}">${df > 0 ? "▲" : df < 0 ? "▼" : "–"} ${fmtN(Math.abs(df))} (${df > 0 ? "+" : df < 0 ? "−" : ""}${Math.abs(pc).toFixed(2)}%)</span></div>`; }).join("");
+      $("#mFxFoot").textContent = `${d.replace(/-/g, ".")} 서울외국환중개 최초고시 · 원 기준` + (d !== TODAY ? " · 오늘 고시 전이라 직전 영업일 기준" : "");
+    }
+    const ch = ((UPDATES && UPDATES.changes) || []).filter(c => c.status === "시행" || c.status === "공포(시행 전)");
+    let h;
+    if (ch.length){ const c = ch[ch.length - 1];
+      h = `<div class="top"><span class="bd ${c.status === "시행" ? "live" : ""}">${esc(c.status)}</span>${c.effective ? esc(c.effective) + " 시행" : ""}</div><h3>${esc(c.law)}${c.version ? " " + esc(c.version) : ""}</h3><p>${esc(c.summary || "")}</p>`; }
+    else { const a = String(AMEND[0] || ""), k = a.indexOf(" — "), t = k > 0 ? a.slice(0, k) : a, s = k > 0 ? a.slice(k + 3) : "", n = AMEND.filter(x => /^\s*·/.test(x)).length, ef = (t.match(/([\d.]+) 시행/) || [])[1];
+      h = `<div class="top"><span class="bd live">시행 중</span>${ef ? esc(ef) + " 시행" : ""}</div><h3>외국환거래규정 개정 · ${esc(t.replace(/\s*\(.*\)\s*$/, "")).replace(/(\d)-(\d)/g, "$1‑$2")}</h3><p>${esc(s)}${n ? ` · 바뀐 항목 ${n}건` : ""}</p>`; }
+    $("#mNotice").innerHTML = `<div class="m-ch" style="margin-bottom:8px"><b>🔔 오늘의 핵심 규정 알림</b></div>` + h + `<button type="button" class="m-more" data-mgo="info" style="padding:0">기준 법령에서 전체 보기 ›</button>`;
+  }
+  const _rh = renderHome; renderHome = function(){ _rh(); try { mHome(); } catch(e){} };
+  try { mHome(); } catch(e){}
+  document.addEventListener("click", e => { const b = e.target.closest("[data-mgo]"); if (!b) return;
+    const a = b.dataset.mgo;
+    if (a === "judge"){ showTab("ask"); const n = $("#newBtn"); if (n) n.click(); setTimeout(() => { const q = $("#qbox"); if (q) q.focus({ preventScroll:true }); }, 150); }
+    else if (a === "qa"){ showTab("chat"); setTimeout(() => { const q = $("#chatQ"); if (q) q.focus({ preventScroll:true }); }, 150); }
+    else if (a === "limit") showTab("calc");
+    else showTab(a);
+  });
   let tries = 0; const iv = setInterval(() => { me(); if ((window.FX_ME && window.FX_ME.name && window.__owner !== undefined) || ++tries > 40) clearInterval(iv); }, 500);
   me(); mSync();
-  const th = $("#mTheme"), thSync = () => { th.textContent = document.documentElement.dataset.theme === "dark" ? "☀️" : "🌙"; };
+  const th = $("#mTheme"), thSync = () => { th.querySelector("i").textContent = document.documentElement.dataset.theme === "dark" ? "☀️" : "🌙"; };
   th.onclick = () => { const b = document.getElementById("themeBtn"); if (b) b.click(); thSync(); };
   new MutationObserver(thSync).observe(document.documentElement, { attributes:true, attributeFilter:["data-theme"] }); thSync();
   document.querySelectorAll("#mTabbar button").forEach(b => b.onclick = () => {
@@ -4941,17 +5275,592 @@ document.addEventListener("click", e => {
     if (e.target === sheet) { sheet.close(); return; }
     const b = e.target.closest("[data-ms]"); if (!b) return; const a = b.dataset.ms; sheet.close();
     if (a === "claude") $("#claudeBtn").click();
+    else if (a === "rename") window.fxWebChangeName && fxWebChangeName();
     else if (a === "pw") window.fxWebChangePw && fxWebChangePw();
     else if (a === "logout") window.fxWebLogout && fxWebLogout();
     else showTab(a);
   });
-  document.querySelectorAll("[data-mq]").forEach(b => b.onclick = () => {
-    const a = b.dataset.mq;
-    if (a === "new") { showTab("ask"); const n = $("#newBtn"); if (n) n.click(); setTimeout(() => { const q = $("#qbox"); if (q) q.focus({ preventScroll:true }); }, 120); }
-    else if (a === "fx") showTab("calc");
-    else if (a === "zip") { showTab("forms"); const z = $("#fZip"); z.scrollIntoView({ block:"center" }); z.focus({ preventScroll:true }); toast("검색·구분으로 목록을 줄인 뒤 「한꺼번에 받기」를 누르면 그 서식만 압축 파일로 받습니다."); }
-    else showTab(a);
+})();
+
+/* ---------- 내장 판정 엔진 (웹): 외부 AI 없이 외국환거래규정·취급지침 원문 조항에 연결된 규칙으로 판정 ---------- */
+window.__LOCAL = true;
+(function(){
+  const SIG = {};
+  const sig = (k, f) => { try { SIG[k] = String(f()).slice(0, 40); } catch { SIG[k] = "\u0000"; } };
+  sig("tri", () => TRIAGE("", "", "")); sig("pre", () => PRE_PROMPT("", "", "", "")); sig("ver", () => VERIFY("", "", "", ""));
+  sig("sheet", () => SHEET_PROMPT("", "", "", "")); sig("chat", () => CHAT_RULES()); sig("agent", () => agentRules());
+  const txt = input => typeof input === "string" ? input : (Array.isArray(input) ? input.map(m => typeof m.content === "string" ? m.content : "").join("\n\n") : "");
+  const first = input => typeof input === "string" ? input : (Array.isArray(input) && input[0] ? String(input[0].content || "") : "");
+  const lastU = input => Array.isArray(input) ? String((input.filter(m => m.role === "user").pop() || {}).content || "") : String(input || "");
+  const is = (s, k) => s.startsWith(SIG[k]);
+  let LAST = null;
+
+  /* ---- 입력 해석 ---- */
+  function usdOf(q, ctx){
+    if (ctx && ctx.usd) return ctx.usd;
+    const s = String(q || "").replace(/,/g, "");
+    let m = s.match(/(?:USD|US\$|\$|미화)\s*(\d+(?:\.\d+)?)\s*(만|천)?/i) || s.match(/(\d+(?:\.\d+)?)\s*(만|천)?\s*(?:불|달러|USD)/i);
+    if (m) return Number(m[1]) * (m[2] === "만" ? 1e4 : m[2] === "천" ? 1e3 : 1);
+    m = s.match(/(\d+(?:\.\d+)?)\s*(억|천만|백만|만)\s*원?/) || s.match(/(\d{5,})\s*원/);
+    if (m){ const k = Number(m[1]) * ({ "억":1e8, "천만":1e7, "백만":1e6, "만":1e4 }[m[2]] || 1); try { const u = toUSD(k, "KRW", TODAY); if (u && u.usd) return u.usd; } catch {} }
+    return 0;
+  }
+  function whoOf(q, ctx){
+    const p = (ctx && ctx.payer) || "";
+    if (/재외동포|해외이주/.test(p)) return "emig";
+    if (/외국인거주자/.test(p)) return "frgn";
+    if (/비거주자/.test(p)) return "nr";
+    if (/법인/.test(p)) return "corp";
+    if (/거주자 개인/.test(p)) return "res";
+    if (/재외동포|해외이주/.test(q)) return "emig";
+    if (/외국인\s*(근로자|거주자|직원|노동자)|외국인이|외국인의/.test(q)) return "frgn";
+    if (/비거주자(가|의|인)/.test(q)) return "nr";
+    if (/법인|회사|기업|㈜|주식회사/.test(q)) return "corp";
+    return "res";
+  }
+  const U = n => "미화 " + (n >= 1e4 ? (Math.round(n / 1e3) / 10).toLocaleString("ko-KR") + "만불" : Math.round(n).toLocaleString("ko-KR") + "불");
+  const APP = "송금신청서 (취급지침 서식 제3-1호)", IDD = "실명확인증표(주민등록증·운전면허증 등), 법인은 사업자등록증 사본";
+  const R = o => Object.assign({ v:{}, concl:"", basis:[], steps:[], docs:[], forms:[], cautions:[], more:[], ids:[] }, o);
+  const V = (st, ty, org, when, desig, tier, law, hq, gist) => ({ "신고여부":st, "신고유형":ty, "신고기관":org, "신고시기":when, "지정거래외국환은행":desig, "신고구분":tier, "근거조문":law, "본점확인":hq, "요지":gist });
+
+  /* ---- 거래유형별 규칙 ---- */
+  const RULE = {};
+  RULE.out_gen = (q, x) => {
+    if (x.who === "frgn" || x.who === "nr") return RULE.out_frgn(q, x);
+    if (x.who === "emig") return RULE.out_emig(q, x);
+    if (/제3자|상계/.test(q)) return RULE.etc_net(q, x);
+    const u = x.usd, acc = x.acc;
+    const base = { basis:["거주자(외국인거주자 제외)는 신고가 필요 없는 거래로서 연간 누계 미화 10만불 이내이면 지급등의 증빙서류 없이 지급할 수 있고, 10만불은 모든 외국환업무취급기관등을 통한 지급을 합산합니다 [규정 제4-3조].", "증빙서류 없이 지급하는 경우에도 거래 내용을 설명하고 은행 확인을 받아야 합니다 [규정 제4-3조].", "연간 누계는 한국은행 해외송금 통합관리시스템(ORIS)으로 관리합니다 [지침 p.38]."],
+      docs:[APP, IDD], forms:["[서식 제3-1호]"], ids:["규정 제4-3조", "지침 p.38", "지침 p.39"],
+      cautions:["연간 누계는 1월 1일부터 12월 31일까지, 다른 금융회사를 통한 무증빙 송금까지 합산합니다. 창구에서 ORIS로 반드시 조회하세요.", "이 지급은 거래외국환은행 지정 대상이 아닙니다.", "같은 사람이나 가족·관련자가 5천불·1만불 바로 아래 금액으로 여러 번 나눠 보내면 규정 회피성 분할 송금인지 점검하세요. 규정은 분할한 지급을 합산해 판단합니다 [규정 제5-10조].", "해외부동산·해외직접투자·해외예금처럼 신고가 필요한 자본거래 자금이면 이 방법으로 보낼 수 없습니다. 해당 유형으로 다시 판정하세요."] };
+    if (u && u > 1e5){
+      return R({ ...base, v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항; 규정 제4-3조제1항제2호", "불요", `${U(u)}은 증빙 없이 보낼 수 있는 연간 10만불을 넘으므로, 지급 사유와 금액을 입증하는 서류를 내시면 신고 없이 보낼 수 있습니다.`),
+        concl:`이번 지급 ${U(u)}은 증빙서류 없이 보낼 수 있는 연간 누계 10만불을 넘습니다. 지급 사유와 금액을 입증하는 서류를 받아 은행이 확인한 뒤 지급합니다(신고 불요).`,
+        basis:["지급등을 하려는 자는 지급 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "연간 10만불을 넘더라도 신고가 필요 없는 거래로서 거래 내용과 금액을 서류로 은행이 확인할 수 있으면 지급할 수 있습니다 [규정 제4-3조]."].concat(base.basis.slice(2)),
+        steps:["ORIS로 올해 무증빙 송금 누계를 조회합니다.", "지급 사유와 금액을 입증하는 서류(계약서·청구서·가족관계 서류 등)를 받아 거래 내용과 금액을 확인합니다.", "신고가 필요한 자본거래(부동산·투자·예금 등)가 아닌지 확인합니다.", "송금신청서를 받아 송금합니다."],
+        docs:[APP, IDD, "지급 사유와 금액을 입증하는 서류 (계약서·청구서·송장, 생활비라면 가족관계 확인 서류 등)"], forms:base.forms, ids:base.ids.concat(["규정 제4-2조"]), cautions:base.cautions,
+        more:["입증서류를 낼 수 없는 경우, 건당 미화 5천불 이내만 증빙 없이 보낼 수 있습니다 [규정 제4-3조]."] });
+    }
+    const amt = u ? `${U(u)}` : "이번 금액";
+    return R({ ...base, v:V("신고 불요", "신고예외 거래 (증빙서류 미제출 지급)", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제4-3조제1항제1호", "불요", `올해 다른 은행·송금업체 금액을 합쳐 10만불 이내라면 증빙서류 없이 신고 없이 보낼 수 있습니다.`),
+      concl:`${amt}은 올해 무증빙 송금 누계(다른 금융회사 포함)와 합쳐 미화 10만불 이내라면 지급등의 증빙서류 없이 보낼 수 있습니다(신고 불요). 누계가 10만불을 넘으면 건당 5천불 이내이거나, 지급 사유와 금액을 서류로 확인한 경우에만 보낼 수 있습니다.`,
+      steps:["ORIS로 올해 무증빙 송금 누계를 조회합니다" + (acc ? " (올해 같은 사유의 기존 거래가 있다고 하셨습니다)." : "."), "고객에게 송금 사유를 듣고, 신고가 필요한 자본거래가 아닌지 확인합니다.", "송금신청서와 실명확인증표를 받아 송금합니다."],
+      more:(u ? [] : ["거래금액을 입력하면 한도 초과 여부까지 판정합니다."]).concat(["올해 누계와 합쳐 10만불을 넘으면 건당 미화 5천불 이내이거나, 지급 사유와 금액을 서류로 확인한 경우에만 보낼 수 있습니다 [규정 제4-3조]." + (acc ? " 올해 같은 사유의 기존 거래가 있다고 하셨으니 ORIS 누계를 꼭 확인하세요." : "")]) });
+  };
+  const SPLIT = (q, u) => /나눠|나누어|분할|쪼개|여러\s*(번|차례|건)/.test(q) || (u >= 4500 && u <= 5000) || (u >= 9500 && u <= 1e4);
+  const _og = RULE.out_gen;
+  RULE.out_gen = (q, x) => {
+    const r = _og(q, x);
+    if (r && r.v && /제4-3조/.test(r.v["근거조문"] || "") && SPLIT(q, x.usd)){
+      r.v["본점확인"] = "필요 — 5천불·1만불 직전 금액이나 분할 송금으로 보여 규정 회피성 분산거래 여부 점검";
+      r.more = ["같은 날·가까운 날짜에 본인·가족·관련자 명의로 나눈 송금이 있는지 ORIS와 자행 거래내역으로 확인하세요. 나눈 금액은 합산해 한도와 신고 기준을 판단합니다 [규정 제5-10조]."].concat(r.more || []);
+      r.ids = (r.ids || []).concat(["규정 제5-10조"]);
+    }
+    return r;
+  };
+  RULE.out_travel = (q, x) => {
+    if (/유학|재학|학생|체재|파견|주재|연수/.test(q)){
+      const stu = /유학|재학|학생/.test(q);
+      return R({ v:V("신고 불요", "신고예외 거래 (거래외국환은행 지정 후 지급)", "지정거래외국환은행의 장", "해당 없음", "지정 필요", "② 지정은행 확인", "규정 제4-5조제2항", "불요", `${stu ? "해외유학생" : "해외체재자"} 경비는 거래외국환은행을 지정하고 ${stu ? "유학" : "체재"}을 입증하는 서류를 내시면 신고 없이 보낼 수 있습니다.`),
+        concl:`${stu ? "해외유학생" : "해외체재자"}의 해외여행경비는 거래외국환은행을 지정하고 ${stu ? "해외유학" : "해외체재"}을 입증하는 서류를 내면 지급할 수 있습니다(신고 불요).${stu ? " 유학생은 이후 매년 재학을 입증하는 서류를 내야 합니다." : ""}`,
+        basis:["해외체재자 및 해외유학생이 해외여행경비를 지급하려면 거래외국환은행을 지정하고 해외체재 또는 해외유학을 입증하는 서류를 내야 하며, 해외유학생은 매 연도 재학 입증 서류를 내야 합니다 [규정 제4-5조].", "해외유학생은 수학기관의 입학허가서 등, 해외체재자는 소속 법인(단체)의 장의 출장·파견증명서 등을 냅니다 [지침 p.60]."],
+        steps:["거래외국환은행 지정 여부를 확인하고, 없으면 지정합니다 (취급지침 서식 제1-2호).", stu ? "입학허가서(이후 매년 재학증명서)를 받습니다." : "출장·파견증명서 등 체재 목적 입증서류를 받습니다.", "송금신청서를 받아 송금합니다."],
+        docs:[APP, "여권 사본", stu ? "수학기관의 입학허가서 (이후 매년 재학증명서)" : "소속 법인(단체)의 장의 출장·파견증명서 등 체재 목적 입증서류", "거래외국환은행 지정(변경)신청서 (지정 전이면)"],
+        forms:["[서식 제1-2호]", "[서식 제3-1호]"], ids:["규정 제4-5조", "지침 p.60", "규정 제10-11조"],
+        cautions:[...(stu ? ["해외유학생은 매 연도 외국교육기관의 장이 발급한 재학증명서 등 재학 입증 서류를 내야 합니다 [규정 제4-5조]."] : []), "해외체재자는 외국에 30일을 넘게 머무는 사람입니다 [지침 p.60].", "미화 1만불을 넘는 외화를 직접 들고 나가 지급하려면 지정거래외국환은행의 확인을 받아야 합니다 [규정 제5-11조]."] });
+    }
+    return R({ v:V("확인 필요", "지급 목적별 확인", "외국환은행의 장", "해당 없음", "확인 필요", "확인 필요", "규정 제4-5조제1항", "필요 — 일반 해외여행경비의 송금 가능 사유 해당 여부 확인", "일반 해외여행자의 경비 송금은 규정이 정한 경우에만 가능하므로 지급 목적을 확인해야 합니다."),
+      concl:"일반해외여행자가 외국환은행을 통해 외국으로 보낼 수 있는 해외여행경비는 규정이 정한 경우(기관 예산, 치료비, 수학기관 등록금·교재대, 외국 여행업자·숙박업자·운수업자 지급 등)로 한정됩니다. 목적을 확인한 뒤 판정하세요.",
+      basis:["일반해외여행자가 외국환은행을 통해 외국에 지급할 수 있는 경우는 규정에서 정한 경우에 한합니다 [규정 제4-5조]."],
+      steps:["여행자 구분(일반해외여행자·해외체재자·해외유학생)을 확인합니다.", "지급 목적이 규정에 열거된 경우인지 확인합니다.", "해당하지 않으면 여행자가 직접 환전·휴대하거나 카드로 쓰는 방법을 안내합니다."],
+      docs:[APP, "여권 사본", "지급 목적을 입증하는 서류 (치료비 청구서, 등록금 고지서, 여행사 계약서 등)"], forms:["[서식 제3-1호]"], ids:["규정 제4-5조", "지침 p.60"],
+      more:["유학·체재 목적이면 질의에 적어 주세요. 거래외국환은행 지정 방식으로 다시 판정합니다."] });
+  };
+  RULE.out_frgn = (q, x) => {
+    const u = x.usd;
+    if (/급여|월급|보수|임금|퇴직|소득|연금|보험금|근로/.test(q)){
+      return R({ v:V("신고 불요", "취득경위 입증서류 제출 후 은행 확인", "지정거래외국환은행의 장", "해당 없음", "지정 필요", "② 지정은행 확인", "규정 제4-4조제1항제3호", "불요", "국내에서 번 급여·소득 범위 안이라면 소득을 입증하는 서류를 내고 지정한 은행을 통해 신고 없이 보낼 수 있습니다."),
+        concl:"외국인거주자·비거주자가 국내 고용·근무로 받은 보수나 소득 범위 안에서 보내는 것은, 취득경위 입증서류(급여명세표 등)를 내고 지정거래외국환은행을 통하면 신고 없이 지급할 수 있습니다.",
+        basis:["비거주자 및 외국인거주자는 국내 고용·근무에 따른 국내보수, 자유업 소득, 사회보험·연금 등 소득 범위 이내에서 취득경위 입증서류를 내고 지정거래외국환은행을 통해 지급할 수 있습니다 [규정 제4-4조].", "제출서류: 송금신청서, 여권, 고용주가 확인한 급여명세표 등. 거래외국환은행 지정은 여권만으로 가능합니다 [지침 p.44]."],
+        steps:["거래외국환은행으로 우리 은행이 지정되어 있는지 확인하고, 없으면 여권으로 지정합니다.", "급여명세표 등으로 송금액이 국내 소득 범위 안인지 확인합니다.", "송금신청서를 받아 송금합니다."],
+        docs:[APP, "여권 사본", "고용주가 확인한 급여명세표 등 급여 입증서류 (국내보수)", "소득금액증명·납세증명서 (자유업 소득)", "보험금·연금 수령증 (사회보험·연금)"],
+        forms:["[서식 제1-2호]", "[서식 제3-1호]"], ids:["규정 제4-4조", "지침 p.44"],
+        cautions:["「외국인근로자의 고용등에 관한 법률」에 따른 출국만기보험 수령은 지정거래외국환은행을 통하지 않아도 됩니다 [규정 제4-4조].", "고용주가 대신 신청하는 경우 사업자등록증과 근로자별 급여명세표를 받아야 합니다 [지침 p.44]."] });
+    }
+    if (u && u <= 5e4){
+      return R({ v:V("신고 불요", "신고예외 거래 (연간 미화 5만불 이내)", "지정거래외국환은행의 장", "해당 없음", "지정 필요", "② 지정은행 확인", "규정 제4-4조제2항", "불요", "취득경위를 입증하지 못해도 연간 미화 5만불까지는 지정한 은행을 통해 보낼 수 있습니다."),
+        concl:`취득경위 입증서류가 없어도 연간 누계 미화 5만불 범위 안에서 지정거래외국환은행을 통해 지급할 수 있습니다. 이번 ${U(u)}를 포함한 올해 누계를 확인하세요.`,
+        basis:["취득경위 입증 사유에 해당하지 않는 경우 비거주자등은 연간 미화 5만불 범위 내에서 지정거래외국환은행 또는 신용카드사를 통해 지급할 수 있습니다 [규정 제4-4조].", "연간(1.1~12.31) 5만불 이하는 취득경위 입증서류 없이 지급할 수 있습니다 [지침 p.45]."],
+        steps:["거래외국환은행 지정 여부를 확인합니다.", "올해 같은 방식 지급 누계를 확인합니다.", "송금신청서를 받아 송금합니다."],
+        docs:[APP, "여권 사본"], forms:["[서식 제1-2호]", "[서식 제3-1호]"], ids:["규정 제4-4조", "지침 p.45"] });
+    }
+    return R({ v:V("확인 필요", "취득경위 입증서류 확인", "지정거래외국환은행의 장", "해당 없음", "지정 필요", "확인 필요", "규정 제4-4조제1항", "필요 — 연간 5만불을 넘거나 금액이 정해지지 않아 취득경위 입증 여부 확인 필요", "보내려는 돈을 어떻게 벌었는지 입증하는 서류가 있어야 보낼 수 있습니다."),
+      concl:`외국인거주자·비거주자는 자금의 취득경위를 입증하는 서류를 내야 지급할 수 있습니다. 입증 없이 보낼 수 있는 금액은 연간 미화 5만불까지입니다${u ? ` (이번 ${U(u)})` : ""}.`,
+      basis:["비거주자 및 외국인거주자는 규정이 정한 자금의 취득경위를 입증하는 서류를 내 외국환은행의 확인을 받은 경우에만 지급할 수 있습니다 [규정 제4-4조]."],
+      steps:["자금의 출처(급여·입국 시 가져온 돈·매각대금 등)를 확인합니다.", "출처에 맞는 취득경위 입증서류를 받습니다.", "입증이 어려우면 본점과 처리 방법을 협의합니다."],
+      docs:[APP, "여권 사본", "취득경위 입증서류 (급여명세표, 외국환신고(확인)필증, 매각 대금 입증서류 등)"], forms:["[서식 제3-1호]"], ids:["규정 제4-4조", "지침 p.44", "지침 p.45"],
+      more:["자금이 국내 급여·소득이면 질의에 적어 주세요."] });
+  };
+  RULE.out_emig = (q, x) => {
+    if (/재외동포|국내\s*재산|재산\s*반출|부동산\s*매각|매각\s*대금/.test(q) || x.who === "emig" && !/이주비|이주/.test(q)){
+      return R({ v:V("신고 불요", "신고예외 거래 (확인서 범위 내 지정은행 지급)", "지정거래외국환은행의 장", "해당 없음", "지정 필요", "② 지정은행 확인", "규정 제4-4조제1항제8호", "불요", "관할세무서장이 발급한 부동산매각자금확인서나 자금출처확인서 금액 안에서 지정한 은행을 통해 보낼 수 있습니다."),
+        concl:"비거주자인 재외동포의 국내재산 반출은 관할세무서장이 발급한 부동산매각자금확인서 또는 자금출처확인서의 범위 이내에서 지정거래외국환은행을 통해 지급할 수 있습니다(신고 불요).",
+        basis:["비거주자인 재외동포가 관할세무서장으로부터 발급받은 부동산매각자금확인서 또는 자금출처확인서의 범위 이내에서 지정거래외국환은행을 통해 지급할 수 있습니다 [규정 제4-4조].", "재외동포의 국내재산 반출은 거래외국환은행 지정 대상입니다 [규정 제10-11조]."],
+        steps:["거래외국환은행 지정 여부를 확인하고, 없으면 지정합니다.", "부동산 처분대금이면 부동산매각자금확인서, 예금 등이면 자금출처확인서를 받습니다.", "확인서 금액 범위 안인지 확인하고 송금신청서를 받아 송금합니다."],
+        docs:[APP, "여권 사본 (재외동포 확인)", "관할세무서장이 발급한 부동산매각자금확인서 (부동산 처분대금)", "관할세무서장이 발급한 예금등 자금출처확인서 (예금·신탁 등)"],
+        forms:["[서식 제1-2호]", "[서식 제3-1호]"], ids:["규정 제4-4조", "규정 제10-11조"],
+        cautions:["자금출처확인서 '유효기간 1년'이나 '미화 10만불 이하 확인서 면제' 기준은 내장 원문에 없습니다. 판정 근거로 쓰지 마세요.", "해외이주비 지급과 중복해서 적용할 수 없습니다 [지침 p.42]."] });
+    }
+    return R({ v:V("신고 불요", "신고예외 거래 (자금출처확인서 범위 내 지급)", "지정거래외국환은행의 장", "해당 없음", "지정 필요", "② 지정은행 확인", "규정 제4-3조제1항제9호; 규정 제4-3조제3항", "불요", "관할세무서장이 발급한 자금출처확인서 금액 안에서, 지정한 은행 1곳을 통해 해외이주비를 보낼 수 있습니다."),
+      concl:"해외이주자의 해외이주비는 관할세무서장이 발급한 자금출처확인서의 범위 이내에서 증빙서류 없이 지급할 수 있고, 거래외국환은행을 지정해야 합니다(신고 불요).",
+      basis:["해외이주자가 관할세무서장으로부터 발급받은 자금출처확인서의 범위 이내에서 해외이주비를 지급하는 경우 증빙서류 없이 지급할 수 있고, 거래외국환은행을 지정해야 합니다 [규정 제4-3조].", "제출서류: 송금신청서, 여권, VISA 또는 영주권 사본, 해외이주신고확인서, 자금출처확인서 [지침 p.41]."],
+      steps:["거래외국환은행 지정 여부를 확인합니다 (세대주 기준, 구분이 없으면 이주자 1인의 여권번호로 등록).", "해외이주신고확인서와 자금출처확인서를 받습니다.", "확인서 범위 안에서 송금신청서를 받아 송금합니다."],
+      docs:[APP, "여권 사본", "VISA 사본 또는 영주권 사본", "해외이주신고확인서 (금융기관 제출용)", "관할세무서장이 발급한 자금출처확인서"],
+      forms:["[서식 제1-2호]", "[서식 제3-1호]"], ids:["규정 제4-3조", "지침 p.41", "지침 p.42"],
+      cautions:["해외이주자는 해외여행경비를 지급할 수 없습니다 [지침 p.42].", "2025년 2월 10일 이전에 해외이주자(예정자)로 지정된 경우에는 경과 규정이 따로 있습니다 [지침 p.42]. 해당되면 본점에 확인하세요."] });
+  };
+  RULE.out_odi = (q, x) => { const r = RULE.out_odi0(q, x);
+    if (r && /대부|대여|금전\s*(을|를)?\s*빌려|론|loan/i.test(q) && /제9-5조/.test(r.v["근거조문"] || "")){
+      r.v["신고유형"] = "외국환은행 신고 (대부투자, 사전신고)"; r.v["요지"] = "이미 투자한 현지법인에 1년 이상 돈을 빌려주는 대부투자도 해외직접투자라서, 송금 전에 정해진 은행에 신고해야 합니다.";
+      r.concl = "해외직접투자를 한 거주자가 그 현지법인에 상환기간 1년 이상으로 금전을 대여하는 대부투자는 해외직접투자에 해당하므로 송금 전에 외국환은행에 신고해야 합니다 [시행령 제8조]. 송금(투자)보고서는 송금 즉시, 외화증권(채권)취득보고서는 대여자금 제공 후 6개월 이내에 냅니다 [규정 제9-9조].";
+      r.basis = ["이미 투자한 외국법인에 상환기간 1년 이상으로 금전을 대여하는 것은 해외직접투자입니다 [시행령 제8조]."].concat(r.basis);
+      r.docs = ["해외직접투자 신고서(보고서) (별지 제9-1호)", "금전대여계약서 (상환기간 1년 이상)", "사업계획서 (자금조달 및 운용계획 포함)", "납세증명서·신용정보 미등록 입증서류"]; }
+    if (r && r.cautions && r.cautions.length > 1 && /사후관리/.test(r.cautions[r.cautions.length - 1])) r.cautions.unshift(r.cautions.pop());
+    return r; };
+  RULE.out_odi0 = (q, x) => {
+    if (/금융회사|은행|보험|증권사|카드사/.test(q)) return generic(q, x, "금융회사등의 해외직접투자는 「금융회사등의 해외진출에 관한 규정」에 따라 금융감독원 신고 대상이 될 수 있습니다.");
+    return R({ v:V("신고 필요", "외국환은행 신고 (사전신고)", "외국환은행의 장 (주채권은행 → 여신최다은행 → 거주자가 지정하는 은행 순)", "거래 전 사전신고", "확인 필요", "② 지정은행 확인", "규정 제9-5조제1항", "필요 — 신고 은행 결정과 첨부서류 심사", "해외에 회사를 세우거나 지분을 사는 해외직접투자는 투자 전에 정해진 은행에 신고해야 합니다."),
+      concl:"거주자의 해외직접투자(증액투자 포함)는 투자 전에 외국환은행에 신고해야 합니다. 신고 은행은 주채무계열 소속이면 주채권은행, 아니면 여신최다은행, 둘 다 아니면 거주자가 지정하는 은행입니다.",
+      basis:["해외직접투자는 외국법인 지분 10% 이상 취득, 또는 10% 미만이라도 임원 파견·1년 이상 원자재·제품 매매계약·기술 제공 등 관계를 맺는 투자입니다 [시행령 제8조].", "거주자가 해외직접투자를 하려면 주채권은행, 여신최다은행 또는 거주자가 지정하는 은행 순으로 정해지는 외국환은행에 신고해야 합니다 [규정 제9-5조].", "투자금액 납입 후 6개월 이내 외화증권(채권)취득보고서, 송금 즉시 송금(투자)보고서를 내야 합니다 [규정 제9-9조].", "기존 투자자로부터 지분을 양수하거나 이익유보금·자본잉여금으로 증액하는 경우 등은 3개월 이내 사후보고할 수 있습니다 [규정 제9-5조]."],
+      steps:["투자자가 주채무계열 소속인지, 여신최다은행이 어디인지 확인해 신고 은행을 정합니다.", "해외직접투자신고서와 첨부서류를 받아 심사합니다.", "신고 수리 후 투자자금을 송금하고, 이후 사후관리(외화증권취득보고 등)를 안내합니다."],
+      docs:["해외직접투자 신고서(보고서) (별지 제9-1호)", "사업계획서 (자금조달 및 운용계획 포함)", "신용정보 집중기관에 채무불이행자로 등록되지 않았음을 입증하는 서류", "납세증명서 (조세체납이 없음을 입증)", "그 밖에 신고기관이 필요하다고 인정하는 서류"],
+      forms:["[별지 9-1]"], ids:["규정 제9-5조"],
+      cautions:["신고 없이 투자했거나 신고 내용과 다르게 투자했으면 제재기관에 위반사실을 보고한 뒤 사후신고할 수 있습니다 [규정 제9-5조].", "사후관리: 송금(투자)보고서는 송금 즉시, 외화증권(채권)취득보고서는 납입 후 6개월 이내, 투자금액 300만불 초과 시 연간사업실적보고서는 회계기간 종료 후 5개월 이내 [규정 제9-9조]."], ids:["규정 제9-5조", "규정 제9-9조", "시행령 제8조"] });
+  };
+  RULE.out_re = (q, x) => {
+    const u = x.usd;
+    if (/상속|유증|증여(로|받)/.test(q) || (/임차|월세|전세|렌트|임대차/.test(q) && (/유학|체재/.test(q) || (u && u <= 1e4)))){
+      return R({ v:V("신고 불요", "신고예외 거래", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제9-39조제1항", "불요", "상속·증여로 받거나, 유학생·체재자 본인 거주용 임차, 보증금 1만불 이하 임차는 신고가 필요 없습니다."),
+        concl:"비거주자로부터 상속·유증·증여로 받는 경우, 해외체재자·유학생의 본인 거주 목적 임차, 임차보증금 미화 1만불 이하 임차는 신고가 필요 없습니다.",
+        basis:["상속·유증·증여로 인한 취득, 해외체재자·해외유학생의 본인 거주 목적 임차, 임차보증금 미화 1만불 이하 임차는 신고를 요하지 않습니다 [규정 제9-39조]."],
+        steps:["취득 원인(상속·증여·임차)과 보증금 금액을 확인합니다.", "임차보증금 송금이면 임대차계약서를 받아 송금합니다."], docs:[APP, IDD, "임대차계약서 또는 상속·증여를 입증하는 서류"], forms:["[서식 제3-1호]"], ids:["규정 제9-39조"] });
+    }
+    const pre = /계약금|가계약|내신고/.test(q);
+    return R({ v:V("신고수리 필요", "지정거래외국환은행 신고수리", "지정거래외국환은행의 장", "취득 전 신고수리 (계약 확정 전 내신고수리 시 취득예정액의 10% 이내 선지급 가능)", "지정 필요", "② 지정은행 확인", "규정 제9-39조제2항" + (pre ? "; 규정 제9-39조제3항" : ""), "필요 — 해외부동산 취득 신고수리 사안", "해외부동산을 사려면 지정한 은행에 부동산취득신고서를 내고 수리를 받아야 합니다."),
+      concl:"거주자가 외국에 있는 부동산을 취득(주거 외 목적, 본인·배우자의 체재 목적 주택, 보증금 1만불 초과 임차 포함)하려면 지정거래외국환은행에 부동산취득신고서를 내고 수리를 받아야 합니다." + (pre ? " 매매계약 확정 전이라도 내신고수리를 받으면 취득예정금액의 10% 이내에서 계약금 등을 먼저 보낼 수 있고, 3개월 안에 정식 신고수리를 받거나 자금을 회수해야 합니다." : ""),
+      basis:["거주자가 외국 부동산을 취득하려면 부동산취득신고(수리)서를 작성해 지정거래외국환은행에 신고하고 수리를 받아야 합니다 [규정 제9-39조].", "매매계약 확정 전 내신고수리를 받으면 취득예정금액의 100분의 10 이내에서 먼저 지급할 수 있고, 3개월 이내 신고수리를 받거나 회수해야 합니다 [규정 제9-39조]."],
+      steps:["거래외국환은행 지정 여부를 확인합니다.", "부동산취득신고(수리)서와 매매계약서 등 첨부서류를 받아 심사·수리합니다.", "수리 후 취득대금을 송금하고, 취득 후 보고 의무를 안내합니다."],
+      docs:["부동산취득신고(수리)서 (별지 제9-12호)", "부동산 매매계약서 (계약 전이면 취득 예정 내용을 입증하는 서류)", IDD, "그 밖에 지정거래외국환은행이 요구하는 서류"],
+      forms:["[별지 9-12]", "[서식 제1-2호]"], ids:["규정 제9-39조", "규정 제9-40조"], cautions:["취득 후 사후관리: 해외부동산취득보고서는 취득대금 송금 후 3개월 이내(분할 송금은 최종 송금 후 3개월 이내), 처분(변경)보고서는 처분·변경 후 3개월 이내 [규정 제9-40조]."] });
+  };
+  RULE.in_gen = (q, x) => {
+    if (x.whoR === "frgn" || x.whoR === "nr") return R({ v:V("신고 불요", "신고예외 거래 (증빙서류 미제출 수령)", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제4-4조제4항", "불요", "건당 5천불 이내이거나, 신고가 필요 없는 거래로 외국에 있는 자기 자금을 들여오는 경우에는 증빙 없이 받을 수 있습니다."),
+      concl:"비거주자·외국인거주자는 건당 미화 5천불 이내이거나, 신고가 필요 없는 거래로서 외국에 있는 자금을 국내로 들여오는 경우 증빙서류 없이 수령할 수 있습니다.",
+      basis:["비거주자 또는 외국인거주자는 건당 5천불 이내이거나 신고를 요하지 않는 거래로서 외국에 있는 자금을 국내로 반입하기 위해 수령하는 경우 증빙서류 없이 수령할 수 있습니다 [규정 제4-4조]."],
+      steps:["수령 사유를 확인합니다.", "건당 5천불을 넘고 국내 반입 목적이 아니면 증빙서류를 받습니다."], docs:[IDD.replace("주민등록증·운전면허증 등", "여권 등")], forms:[], ids:["규정 제4-4조"] });
+    const u = x.usd, big = u > 1e5;
+    return R({ v:V("신고 불요", big ? "수령사유 서면 확인 (영수확인서)" : "신고예외 거래 (증빙서류 미제출 수령)", big ? "외국환은행의 장" : "해당 없음", "해당 없음", "지정 불요", big ? "② 지정은행 확인" : "① 신고 불요", "규정 제4-3조제1항제3호", "불요", big ? "같은 날 같은 분이 10만불 넘게 받으면 수령 사유를 서면으로 확인받아야 합니다." : "신고가 필요 없는 수령이면 증빙서류 없이 받을 수 있습니다."),
+      concl:"건당 미화 5천불 이내이거나 신고가 필요 없는 거래의 수령은 증빙서류 없이 받을 수 있습니다." + (big ? ` 이번 ${U(u)}처럼 동일자·동일인 기준 10만불을 넘으면 은행이 서면으로 수령사유를 확인해야 합니다(영수확인서).` : " 다만 동일자·동일인 기준 10만불을 넘으면 서면으로 수령사유를 확인받아야 합니다."),
+      basis:["건당 미화 5천불 이내의 수령 또는 신고를 요하지 않는 수령은 증빙서류 없이 할 수 있으나, 동일자·동일인 기준 미화 10만불을 초과하면 서면으로 수령사유를 확인받아야 합니다 [규정 제4-3조].", "취득경위를 입증하는 서류를 내지 않으면 영수확인서(취급지침 서식 제4-3호)를 받습니다 [지침 p.33]."],
+      steps:["같은 날 같은 고객의 수령 합계를 확인합니다.", big ? "취득경위 입증서류를 받거나, 없으면 영수확인서를 받습니다." : "수령 사유를 확인합니다.", "자본거래 등 신고가 필요한 자금이 아닌지 확인한 뒤 지급(입금)합니다."],
+      docs:[IDD].concat(big ? ["취득경위 입증서류, 없으면 영수확인서 (취급지침 서식 제4-3호)"] : []), forms:big ? ["[서식 제4-3호]"] : [], ids:["규정 제4-3조", "지침 p.33", "지침 p.21"],
+      cautions:["수취인이 연락되지 않아 송금일부터 3영업일 안에 수령사유를 알 수 없으면 익영업일 이후 영수확인서 없이 '이전거래'로 보아 처리할 수 있습니다 [지침 p.21]."] });
+  };
+  RULE.in_frgn = (q, x) => RULE.in_gen(q, { ...x, whoR:"nr" });
+  RULE.fx_carry = (q, x) => {
+    const u = x.usd, out = !/입국|가지고\s*들어|반입|수입/.test(q);
+    if (u && u <= 1e4) return R({ v:V("신고 불요", "신고예외 거래", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제6-2조제1항", "불요", "미화 1만불 이하는 신고 없이 가지고 나가거나 들어올 수 있습니다."),
+      concl:`${U(u)}은 미화 1만불 이하이므로 신고 없이 ${out ? "휴대 반출" : "휴대 반입"}할 수 있습니다.`, basis:["미화 1만불 이하의 지급수단등을 수출입하는 경우에는 신고를 요하지 않습니다 [규정 제6-2조]."], steps:["금액이 1만불 이하인지 확인합니다."], docs:[], forms:[], ids:["규정 제6-2조"] });
+    return R({ v:V("신고 필요", "관할세관의 장 신고", "세관장 (해외유학생·체재자·이주자·재외동포는 지정거래외국환은행 확인)", "출국(입국) 시", "확인 필요", "확인 필요", "규정 제6-3조제1항; 규정 제5-11조제1항제2호", "불요", "미화 1만불을 넘는 외화를 들고 나가거나 들어오면 세관에 신고해야 합니다."),
+      concl:`미화 1만불을 넘는 지급수단을 ${out ? "가지고 나가거나" : "가지고 들어오거나"} 하려면 관할세관의 장에게 신고해야 합니다. 해외유학생·해외체재자·해외이주자·재외동포가 경비를 휴대 수출하는 경우에는 지정거래외국환은행의 확인을 받습니다.`,
+      basis:["미화 1만불 이하가 아닌 지급수단등을 수출입하려면 관할세관의 장에게 신고해야 합니다 [규정 제6-3조].", "해외체재자·해외유학생, 해외이주자·재외동포가 1만불을 넘는 대외지급수단을 휴대수출해 지급하는 경우 지정거래외국환은행의 확인을 받고, 일반해외여행자는 관할세관의 장에게 신고한 뒤 휴대수출합니다 [규정 제5-11조]."],
+      steps:["여행자 구분과 금액을 확인합니다.", "유학생·체재자·이주자·재외동포이면 지정거래외국환은행 확인서를 발급합니다.", "그 밖에는 출국 시 세관에 신고하도록 안내합니다."],
+      docs:["지급수단등의 수출입(변경) 신고서 (별지 제6-2호, 세관 제출)", "수출입 사유나 원인 거래의 증빙서류"], forms:["[별지 6-2]"], ids:["규정 제6-3조", "규정 제5-11조", "규정 제6-2조"],
+      more:u ? [] : ["금액을 입력하면 1만불 기준으로 바로 판정합니다."] });
+  };
+  RULE.etc_net = (q, x) => { const rt = _route(q); if (rt) return rt(q, x); return RULE.etc_net0(q, x); };
+  RULE.etc_net0 = (q, x) => { const r = RULE.etc_net00(q, x); if (r && !r.cautions.length && /제5-10조/.test(r.v["근거조문"] || "")) r.cautions = ["나눠서 지급하면 각 금액을 합산해 신고 기준을 판단합니다 [규정 제5-10조].", "수입대행업체 지급, 해외부동산 중개인 지급 등 규정이 열거한 경우는 신고 예외입니다 [규정 제5-10조]."]; return r; };
+  RULE.etc_net00 = (q, x) => {
+    const u = x.usd;
+    if (/상계/.test(q) && /다자간|다수|여러\s*(회사|당사자|업체)|상계\s*센터|네팅|netting/i.test(q)) return R({ v:V("신고 필요", "한국은행 신고", "한국은행총재 (외국환은행 경유)", "상계 전 사전신고", "지정 불요", "③ 한국은행 신고", "규정 제5-4조제3항", "필요 — 한국은행 신고 사안", "여러 당사자의 채권·채무를 상계하거나 다국적기업 상계센터를 통해 상계하면 한국은행에 신고해야 합니다."),
+      concl:"다국적 기업의 상계센터를 통해 상계하거나 다수 당사자의 채권·채무를 상계(다자간 상계)하려면 한국은행총재에게 신고해야 합니다. 양자간 상계는 외국환은행 신고 또는 상계 후 1개월 이내 사후보고입니다.",
+      basis:["다국적 기업의 상계센터를 통하여 상계하거나 다수의 당사자의 채권 또는 채무를 상계하려면 한국은행총재에게 신고해야 합니다 [규정 제5-4조].", "다자간 상계는 한국은행 신고 대상입니다 [지침 p.72]."],
+      steps:["상계 당사자 수와 상계센터 이용 여부를 확인합니다.", "한국은행 신고 서류를 받아 외국환은행을 경유해 신고하도록 안내합니다.", "상계 관계 증빙서류는 5년간 보관하도록 안내합니다."],
+      docs:["지급등의 방법(변경) 신고서", "상계 대상 채권·채무를 입증하는 서류 (계약서·송장 등)", "상계 약정서"], ids:["규정 제5-4조", "지침 p.72"],
+      cautions:["상계를 실시하는 자는 관계 증빙서류를 5년간 보관해야 합니다 [규정 제5-4조]."] });
+    if (/상계/.test(q)){
+      if (u && u <= 5000) return R({ v:V("신고 불요", "신고예외 거래", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제5-4조제1항제1호", "불요", "일방의 금액이 5천불 이하인 상계는 신고가 필요 없습니다."), concl:"일방의 금액이 미화 5천불 이하인 채권·채무 상계는 신고가 필요 없습니다.", basis:["일방의 금액이 미화 5천불 이하인 채권 또는 채무를 상계하는 경우 신고를 요하지 않습니다 [규정 제5-4조]."], steps:["상계 금액을 확인합니다."], docs:["상계 내역을 확인할 수 있는 서류"], ids:["규정 제5-4조"] });
+      return R({ v:V("신고 필요", "외국환은행 신고 (또는 상계 후 1개월 이내 사후보고)", "외국환은행의 장", "상계 전 신고 또는 상계처리 후 1개월 이내 사후보고", "지정 불요", "② 지정은행 확인", "규정 제5-4조제2항", "불요", "비거주자와의 채권·채무를 상계하려면 은행에 신고하거나 상계 후 1개월 안에 보고해야 합니다."),
+        concl:"신고 예외(5천불 이하 등)에 해당하지 않는 비거주자와의 채권·채무 상계는 외국환은행에 신고하거나, 상계처리 후 1개월 이내에 사후 보고해야 합니다.",
+        basis:["신고 예외 사유를 제외하고 비거주자에 대한 채권 또는 채무를 상계하려면 외국환은행의 장에게 신고하거나 상계처리 후 1개월 이내에 사후 보고해야 합니다 [규정 제5-4조]."],
+        steps:["신고 예외 사유(5천불 이하, 수출입대금과 직접 수반 수수료 상계 등)에 해당하는지 확인합니다.", "해당하지 않으면 상계 신고서와 채권·채무 입증서류를 받아 신고(또는 사후보고)를 처리합니다."],
+        docs:["상계 신고서", "상계 대상 채권·채무를 입증하는 서류 (계약서·송장 등)"], ids:["규정 제5-4조"],
+        cautions:["수출입대금과 그에 직접 수반되는 중개·대리점 수수료 상계 등은 신고 예외입니다 [규정 제5-4조]."] });
+    }
+    const t = !u ? null : u <= 5000 ? 1 : u <= 1e4 ? 2 : 3;
+    const V3 = t === 1 ? V("신고 불요", "신고예외 거래", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제5-10조제1항제1호", "불요", "5천불 이하의 제3자 지급은 신고가 필요 없습니다.")
+      : t === 2 ? V("신고 필요", "외국환은행 신고", "외국환은행의 장", "거래 전 사전신고", "지정 불요", "② 지정은행 확인", "규정 제5-10조제2항", "불요", "5천불 초과 1만불 이내의 제3자 지급은 은행에 신고해야 합니다.")
+      : t === 3 ? V("신고 필요", "한국은행 신고", "한국은행총재 (외국환은행 경유)", "거래 전 사전신고", "지정 불요", "③ 한국은행 신고", "규정 제5-10조제3항", "필요 — 한국은행 신고 사안", "1만불을 넘는 제3자 지급은 한국은행에 신고해야 합니다.")
+      : V("확인 필요", "금액별 신고", "외국환은행의 장 또는 한국은행총재", "거래 전 사전신고", "지정 불요", "확인 필요", "규정 제5-10조", "필요 — 금액·예외 사유 확인", "제3자 지급은 금액에 따라 신고 여부와 신고기관이 달라집니다.");
+    return R({ v:V3, concl:"거래 당사자가 아닌 제3자에게 지급하거나 제3자로부터 받는 경우, 미화 5천불 이하는 신고가 필요 없고, 5천불 초과 1만불 이내는 외국환은행에, 그 밖에는 한국은행에 신고해야 합니다(규정에 열거된 예외 제외)." + (u ? ` 이번 금액은 ${U(u)}입니다.` : ""),
+      basis:["미화 5천불 이하의 제3자 지급등 등 규정이 열거한 경우에는 신고를 요하지 않습니다 [규정 제5-10조].", "그 밖에 미화 5천불 초과 1만불 이내는 외국환은행의 장에게, 그 외는 한국은행총재에게 신고해야 합니다 [규정 제5-10조]."],
+      steps:["제3자 지급 예외 사유(해외부동산 중개인 지급, 수입대행 등)에 해당하는지 확인합니다.", "예외가 아니면 금액에 따라 신고기관을 정해 신고를 받습니다."],
+      docs:["제3자 지급 신고서", "원인 거래 계약서 및 제3자 지급 사유를 입증하는 서류"], ids:["규정 제5-10조"] });
+  };
+  const LONG = q => /1년\s*(을|이)?\s*(초과|넘|이상)|일\s*년\s*(초과|넘)/.test(q) && /선급|선수|미리|먼저|사전|선지급|선수령|선적\s*전|수령\s*전/.test(q);
+  RULE.long = (q, x) => { const u = x.usd, big = !u || u > 1e5, imp = !/수출|선수금|선수령|수령/.test(q) || /수입/.test(q);
+    return R({ v:big ? V(u ? "신고 필요" : "확인 필요", "한국은행 신고", "한국은행총재 (외국환은행 경유)", "지급(수령) 전 사전신고 (불가피한 사유는 1년 초과일부터 3개월 이내 사후신고)", "지정 불요", u ? "③ 한국은행 신고" : "확인 필요", "규정 제5-8조제1항", "필요 — 한국은행 신고 사안", "계약건당 10만불을 넘는 수출입대금을 1년 넘게 미리 받거나 보내면 한국은행에 신고해야 합니다.")
+      : V("신고 불요", "신고예외 거래 (계약건당 10만불 이하)", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제5-8조제1항", "불요", "계약건당 10만불 이하라면 1년을 넘는 선지급·선수령도 한국은행 신고 대상이 아닙니다."),
+      concl:`${imp ? "계약건당 미화 10만불을 넘는 수입대금을 선적서류나 물품 수령 1년 전을 넘겨 미리 지급" : "계약건당 미화 10만불을 넘는 수출대금을 물품 선적 1년 전을 넘겨 미리 수령"}하려면 한국은행총재에게 신고해야 합니다. 선박·철도차량·항공기·산업설비는 신고하지 않습니다.` + (u ? ` 이번 계약 금액은 ${U(u)}입니다.` : " 계약 금액을 확인하세요."),
+      basis:["계약건당 미화 10만불을 초과하는 수출대금을 선적 전 1년을 초과해 수령하거나, 수입대금을 선적서류·물품 수령 전 1년을 초과해 지급하려면 한국은행총재에게 신고해야 합니다 [규정 제5-8조].", "상대방 귀책 등 불가피한 사유가 있으면 1년을 초과한 날부터 3개월 이내 사후신고할 수 있습니다 [규정 제5-8조]."],
+      steps:["계약 건당 금액과 선적(물품 수령) 예정일을 확인합니다.", "1년을 넘는 선지급·선수령이고 10만불을 넘으면 한국은행 신고를 안내합니다.", "선박·철도차량·항공기·산업설비 수출입인지 확인합니다(신고 제외)."],
+      docs:["지급등의 방법(변경) 신고서 (한국은행 신고 시)", "수출입 계약서", "선적(물품 수령) 예정일을 확인할 수 있는 서류"], ids:["규정 제5-8조"] }); };
+  RULE.nobank = (q, x) => R({ v:V("신고 필요", "한국은행 신고", "한국은행총재", "지급 전 사전신고", "지정 불요", "③ 한국은행 신고", "규정 제5-11조제3항", "필요 — 신고 예외(규정 제5-11조제1항) 해당 여부 확인", "은행을 거치지 않고 직접 주고받는 지급은 규정이 정한 예외가 아니면 한국은행에 신고해야 합니다."),
+    concl:"거주자가 외국환은행을 통하지 않고 지급등을 하는 경우(물품·용역 제공이나 권리 이전으로 결제하는 경우 포함)에는 규정 제5-11조제1항의 예외에 해당하지 않으면 한국은행총재에게 신고해야 합니다.",
+    basis:["규정이 정한 예외를 제외하고 거주자가 외국환은행을 통하지 않고 지급등을 하려면 한국은행총재에게 신고해야 합니다 [규정 제5-11조].", "해외여행경비·해외이주비를 외국에서 직접 지급하는 경우 등은 신고 예외입니다 [규정 제5-11조]."],
+    steps:["예외 사유(해외여행경비 직접 지급, 송금수표 지급 등)에 해당하는지 확인합니다.", "해당하지 않으면 한국은행 신고를 안내합니다."], docs:["지급등의 방법(변경) 신고서", "원인 거래 증빙서류"], ids:["규정 제5-11조"] });
+  const _route = q => LONG(q) ? RULE.long : /은행을\s*(통하지|거치지)\s*않|은행\s*없이|직접\s*(현금|현찰)으로\s*(지급|전달|주)/.test(q) ? RULE.nobank : null;
+  RULE.out_trade = (q, x) => (_route(q) || RULE.out_trade0)(q, x);
+  RULE.in_trade = (q, x) => (_route(q) || RULE.in_trade0)(q, x);
+  RULE.out_trade0 = (q, x) => { const pre = /사전\s*송금|선급|미리|선적\s*(전|이전)|물품\s*(수령|도착)\s*전|선지급|T\/?T\s*in\s*advance/i.test(q), post = /사후\s*송금|선적\s*후|물품\s*(받|수령)\s*(은|한|후)|B\s*\/\s*L|수입신고필증|통관/.test(q);
+    const r = RULE.out_trade1(q, x);
+    if (pre && !post){ r.docs = [APP, "상업송장(Invoice) 또는 계약서·Offer sheet·Purchase order 등 지급등의 증빙서류", "지급신청서 별지 (증빙서류로 결제방식·무역거래형태·대응수입예정일을 확인할 수 없을 때)"]; r.steps = ["증빙서류로 거래상대방·거래금액·거래품목·대금결제방식·무역거래형태·대응수입예정일을 확인합니다 [지침 p.52].", "수취인이 계약 상대방(수출자)인지 확인합니다.", "송금신청서를 받아 송금합니다."]; r.concl = "선적서류나 물품을 받기 전에 보내는 사전송금방식 수입대금은 신고가 필요 없습니다. 상업송장(Invoice)이나 계약서 등 증빙서류로 거래상대방·금액·품목·결제방식·무역거래형태·대응수입예정일을 확인한 뒤 지급합니다."; }
+    else if (post && !pre){ r.docs = [APP, "상업송장(Invoice) 또는 계약서", "B/L(선하증권) 또는 수입신고필증 (통관방식은 수입신고필증)"]; r.concl = "선적서류나 물품을 받은 뒤 보내는 사후송금방식 수입대금은 신고가 필요 없습니다. 상업송장(Invoice) 또는 계약서와 B/L 또는 수입신고필증으로 확인한 뒤 지급합니다."; }
+    else r.docs = [APP, "상업송장(Invoice) 또는 계약서", "B/L 또는 수입신고필증 (사후송금일 때)", "사전송금이면 계약서·Offer sheet·Purchase order로 대응수입예정일까지 확인"];
+    return r; };
+  RULE.out_trade1 = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "물품 수입대금은 신고가 필요 없고, 상업송장(Invoice)과 운송서류(B/L) 또는 수입신고필증을 내시면 바로 보낼 수 있습니다."),
+    concl:"대외무역법에 따른 물품 수입대금 지급은 외국환거래법상 신고가 필요 없는 정상적인 경상지급입니다. 상업송장(Invoice)과 운송서류(B/L) 또는 수입신고필증으로 거래 내용과 금액을 확인한 뒤 지급합니다. 수출입대금 지급은 금액과 관계없이 관세청 통보 대상입니다. 제3자 지급·상계나 1년을 넘는 선지급처럼 결제 방법이 특이하면 별도 신고 여부를 확인하세요.",
+    basis:["지급등을 하려는 자는 지급 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "선적서류나 물품 수령 후 지급하는 경우 통관방식은 수입신고필증으로, 무통관방식은 계약서·송장 등으로 내용을 확인합니다 [지침 p.52]."],
+    steps:["통관 여부를 확인해 수입신고필증 또는 계약서·송장을 받습니다.", "수취인이 계약 상대방인지(제3자 지급 아닌지) 확인합니다.", "송금신청서를 받아 송금합니다."],
+    docs:[APP, "상업송장 (Commercial Invoice)", "운송서류 (B/L·AWB) 또는 수입신고필증 (통관방식은 수입신고필증으로 확인)", "계약서·Offer sheet·Purchase order (송장만으로 거래 내용을 확인하기 어려울 때)"], forms:["[서식 제3-1호]"], ids:["규정 제4-2조", "지침 p.52", "규정 제4-8조"],
+    cautions:["수출입대금의 지급은 금액과 관계없이 매월 관세청장에게 통보되는 대상이고, 건당 미화 1만불을 넘는 지급은 국세청장 통보 대상입니다 [규정 제4-8조].", "수취인이 계약 상대방(수출자)과 다르면 제3자 지급 신고 여부를 확인하세요 [규정 제5-10조].", "계약 건당 미화 10만불을 넘는 수입대금은 지급방법(제5장) 확인이 필요합니다 [지침 p.52].", "전년도 수입실적 미화 3천만불 이상 기업의 송금방식 수입대금은 증빙서류 제출이 면제되고 5년간 보관합니다 [규정 제4-3조]."] });
+  RULE.out_service = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "계약서와 청구서 같은 증빙서류를 내시면 신고 없이 보낼 수 있습니다."),
+    concl:"용역대가·수수료·로열티 등 경상거래 대가는 지급등의 증빙서류(계약서, 대금청구서 등)를 내고 은행 확인을 받아 지급합니다(신고 불요). 연간 누계 10만불 이내면 증빙 없이 보낼 수도 있습니다.",
+    basis:["지급등을 하려는 자는 지급 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "신고가 필요 없는 거래로 연간 누계 미화 10만불 이내이면 증빙서류 없이 지급할 수 있습니다 [규정 제4-3조]."],
+    steps:["계약서와 대금청구서로 거래 내용과 금액을 확인합니다.", "원천징수 대상 소득이면 세금 처리 여부를 안내합니다.", "송금신청서를 받아 송금합니다."],
+    docs:[APP, "용역·라이선스 계약서", "대금청구서(Invoice)", IDD], forms:["[서식 제3-1호]"], ids:["규정 제4-2조", "규정 제4-3조"] });
+  RULE.in_trade0 = (q, x) => R({ v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항", "불요", "수출신고필증이나 계약서 같은 서류로 수출대금임을 확인하면 신고 없이 받을 수 있습니다."),
+    concl:"수출대금 수령은 수출 거래를 입증하는 서류로 확인한 뒤 받습니다(신고 불요). 건당 미화 5천불 이내이거나 신고가 필요 없는 수령은 증빙서류 없이 받을 수 있습니다.",
+    basis:["지급등을 하려는 자는 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "건당 5천불 이내 또는 신고를 요하지 않는 수령은 증빙 없이 할 수 있고, 동일자·동일인 10만불을 넘으면 서면으로 수령사유를 확인받습니다 [규정 제4-3조]."],
+    steps:["수출신고필증·계약서 등으로 수출대금인지 확인합니다.", "송금인이 계약 상대방이 아니면 제3자 수령 해당 여부를 확인합니다."], docs:["수출신고필증 또는 수출계약서·송장", IDD], forms:[], ids:["규정 제4-2조", "규정 제4-3조"] });
+  RULE.viol = (q, x) => R({ v:V("확인 필요", "위반사실 보고 후 사후 신고·보고", "제재기관의 장 (외국환은행 경유)", "위반 확인 즉시", "확인 필요", "확인 필요", "규정 제4-2조제3항", "필요 — 위반 사안은 본점 확인 후 처리", "필요한 신고를 하지 않았다면 먼저 위반사실을 보고하고 신고를 마친 뒤 지급할 수 있습니다."),
+    concl:"지급등과 관련해 필요한 신고나 보고를 하지 않았다면, 위반사실을 외국환은행을 거쳐 제재기관의 장에게 보고하고 필요한 신고·보고를 사후에 마친 뒤 지급할 수 있습니다. 수령은 위반사실 보고 후 할 수 있습니다.",
+    basis:["필요한 신고등 또는 보고를 하지 않는 등 위반한 경우 위반사실을 외국환은행을 경유해 제재기관의 장에게 보고하고 필요한 절차를 사후 완료한 후 지급할 수 있습니다 [규정 제4-2조]."],
+    steps:["어떤 신고·보고가 빠졌는지와 위반 시점을 확인합니다.", "위반사실 보고서를 받아 본점(외환사업부)에 보고합니다.", "사후 신고·보고를 마친 뒤 지급합니다."], docs:["위반사실 보고 관련 서류", "누락된 신고·보고 서류"], forms:[], ids:["규정 제4-2조"] });
+  RULE.out_dep = (q, x) => R({ v:V("확인 필요", "예금거래 신고 여부 확인", "지정거래외국환은행의 장 또는 한국은행총재", "거래 전", "확인 필요", "확인 필요", "규정 제7-11조", "필요 — 해외예금 신고 예외 해당 여부 확인", "해외에 체재 중인 거주자의 예금 등 일부는 신고가 필요 없지만, 그 밖에는 신고 대상이 될 수 있습니다."),
+    concl:"거주자가 해외에서 비거주자와 예금·신탁거래를 하는 경우, 외국에 체재하는 거주자의 외화예금 등 규정이 열거한 경우에는 신고가 필요 없습니다. 그 밖에는 신고 대상 여부를 확인해야 합니다.",
+    basis:["외국에 체재하고 있는 거주자의 외화예금, 인정된 증권투자·해외직접투자·해외부동산과 관련한 예금 등은 신고를 요하지 않습니다 [규정 제7-11조]."],
+    steps:["예금 목적과 예금자의 체재 여부를 확인합니다.", "신고 예외가 아니면 본점에 신고기관과 절차를 확인합니다."], docs:[APP, IDD, "예금 목적을 입증하는 서류"], forms:[], ids:["규정 제7-11조"] });
+
+  const _oe = RULE.out_emig; RULE.out_emig = (q, x) => { const r = _oe(q, x); if (/예금|신탁|적금|예치금/.test(q) && !/부동산|아파트|주택|매각/.test(q)){ const i = r.docs.findIndex(d => /부동산매각자금확인서/.test(d)), j = r.docs.findIndex(d => /자금출처확인서/.test(d)); if (i >= 0 && j > i){ const t = r.docs[i]; r.docs[i] = r.docs[j]; r.docs[j] = t; } } return r; };
+  const _of = RULE.out_frgn; RULE.out_frgn = (q, x) => { const r = _of(q, x); if (/제4-4조제1항제3호/.test(r.v["근거조문"] || "")) r.cautions.unshift("취득경위 입증서류 없이 보낼 수 있는 금액은 연간 미화 5만불까지입니다 [규정 제4-4조]."); return r; };
+
+  /* 재외동포 국내재산 반출: 거주성에 따라 절차가 다름 (규정 제4-7조 삭제, 2025.2.10) */
+  function emigRes(q, x){
+    const p = (x.ctxPayer || "");
+    if (/비거주자/.test(p)) return "nr";
+    if (/외국인거주자/.test(p)) return "fr";
+    if (/^거주자/.test(p)) return "r";
+    const cit = /시민권|외국\s*국적|국적\s*(을\s*)?취득|외국인/.test(q);
+    if (/비거주자/.test(q)) return "nr";
+    if (/거주자인|(국내|한국)\s*(에서|에)?\s*.{0,8}(거주|체류|체재|살고|살아|사는|산\s*지|근무|생활)|귀국\s*(해|하여|한|후)|입국\s*(해|하여|한|후).{0,10}(거주|체류|체재|살|근무)/.test(q)) return cit ? "fr" : "r";
+    if (/(해외|외국|현지|미국|캐나다|호주|일본|중국|뉴질랜드|독일|영국|베트남|필리핀)\s*(에서|에)?\s*.{0,8}(거주|살고|살아|체류|체재|영업|근무)|\d+\s*년\s*(째|이상|넘게)?\s*(해외|외국)?\s*(거주|체류|체재)|출입국사실증명|해외\s*체류/.test(q)) return "nr";
+    return "?";
+  }
+  const _oe2 = RULE.out_emig;
+  RULE.out_emig = (q, x) => {
+    const isEm = /재외동포|국내\s*재산|재산\s*반출|영주권|시민권/.test(q) || x.who === "emig";
+    if (!isEm || (/이주비|해외\s*이주/.test(q) && !/재외동포/.test(q))) return _oe2(q, x);
+    const res = emigRes(q, x), re = /부동산|아파트|주택|토지|건물|매각/.test(q), dep = /예금|신탁|적금|예치/.test(q);
+    const NOTE = "2025.2.10 외국환거래규정 개정으로 거주자·비거주자 공통이던 재외동포 국내재산 반출절차(규정 제4-7조)가 삭제되어, 지금은 비거주자인 재외동포만 국내재산 반출 절차(규정 제4-4조제1항제8호)를 씁니다.";
+    if (res === "nr"){
+      const r = _oe2("재외동포 국내재산 반출 " + q, x);
+      r.v["신고유형"] = "신고예외 거래 (비거주자인 재외동포 국내재산 반출)";
+      r.v["요지"] = "비거주자인 재외동포라서, 세무서장이 발급한 " + (dep && !re ? "예금등 자금출처확인서" : re && !dep ? "부동산매각자금확인서" : "확인서") + " 금액 안에서 지정한 은행을 통해 신고 없이 보낼 수 있습니다.";
+      r.concl = "비거주자인 재외동포의 국내재산 반출은 관할세무서장이 발급한 부동산매각자금확인서 또는 예금등 자금출처확인서의 범위 이내에서 지정거래외국환은행을 통해 지급합니다(신고 불요). 재외동포 해당 여부와 비거주자 여부를 서류로 확인해야 합니다. " + NOTE;
+      r.basis = ["비거주자인 재외동포는 관할세무서장 발급 부동산매각자금확인서 또는 자금출처확인서의 범위 이내에서 지정거래외국환은행을 통해 지급할 수 있습니다 [규정 제4-4조].", "재외동포란 외국 국적을 취득한 해외이주자, 외국 영주권(또는 이에 준하는 자격)을 취득한 국민, 출생으로 대한민국 국적을 보유했던 자(또는 그 직계비속)로서 대한민국 국적이 없는 자입니다 [규정 제1-2조].", "비거주자 여부는 출입국사실증명 또는 영업활동 입증서류로 확인하고, 부득이한 경우(외국 체류로 서류 발급 불가 등)에만 거주성확인서(지침서식 제3-3호)를 받습니다 [지침 p.47].", "확인서를 은행에 낸 시점에 비거주자임을 확인하며, 그 확인서 한도를 다 쓸 때까지 거주성 판정이 유지됩니다 [지침 p.162].", "거주자·비거주자 공통 절차였던 규정 제4-7조는 2025.2.10 삭제되었습니다 [규정 제4-7조]."];
+      r.steps = ["재외동포 해당 여부를 확인합니다(외국국적취득 확인서류 또는 영주권 확인서류).", "비거주자 여부를 확인합니다(출입국사실증명, 영주권자는 해외 영업활동 입증서류도 가능. 부득이하면 거주성확인서).", "거래외국환은행 지정 여부를 확인하고, 없으면 지정합니다.", "관할세무서장이 발급한 확인서 금액 범위 안에서 송금신청서를 받아 지급합니다."];
+      const cert = dep && !re ? ["예금등 자금출처확인서 (관할세무서장 발급)"] : re && !dep ? ["부동산매각자금확인서 (부동산소재지 또는 최종주소지 관할세무서장 발급)"] : ["부동산매각자금확인서 (부동산 처분대금)", "예금등 자금출처확인서 (예금·신탁 등)"];
+      r.docs = cert.concat(["비거주자 입증서류: 출입국사실증명 또는 해외 영업활동 입증서류(영주권자) — 부득이하면 거주성확인서(지침서식 제3-3호)", "재외동포 확인서류: 외국국적취득 확인서류 또는 영주권(이에 준하는 자격) 확인서류", "송금신청서 (취급지침 서식 제3-1호) · 여권 (또는 사본)", "거래외국환은행 지정(변경)신청서 (지정 전이면)"]);
+      r.forms = ["[서식 제3-1호]", "[서식 제1-2호]", "[서식 제3-3호]"];
+      r.cautions = ["거주성은 확인서를 은행에 낸 시점에 판정하고, 그 확인서 한도를 다 쓸 때까지 판정이 유지됩니다 [지침 p.162].", "외국 국적 취득 이후에 취득한 국내 부동산의 매각대금이면 제9장제5절(비거주자 국내부동산 취득)의 신고 이행 여부를 확인하세요 [지침 p.47].", "외국통화·여행자수표로 휴대 반출할 수 있고, 미화 1만불을 넘으면 지정거래외국환은행이 확인하고 외국환신고(확인)필증을 발급합니다 [규정 제5-11조].", "자금출처확인서 '유효기간 1년'이나 '미화 10만불 이하 확인서 면제' 기준은 원문에 없습니다. 판정 근거로 쓰지 마세요."];
+      r.ids = ["규정 제4-4조", "규정 제1-2조", "지침 p.46", "지침 p.47", "지침 p.162", "규정 제4-7조", "규정 제5-11조"];
+      r.more = [];
+      return r;
+    }
+    if (res === "r" || res === "fr"){
+      const fr = res === "fr";
+      let r;
+      if (fr) r = RULE.out_frgn(q, { ...x, who:"frgn" });
+      else if (/(해외|외국|미국|캐나다|호주|일본|현지)\s*.{0,8}(부동산|주택|아파트|콘도|집).{0,12}(사려|살\s*거|구입|매입|취득|계약)|(구입|매입|취득).{0,10}(해외|외국)\s*부동산/.test(q) && !/매각/.test(q)) r = RULE.out_re(q, x);
+      else if (/현지\s*법인|해외\s*직접\s*투자|지분/.test(q)) r = RULE.out_odi(q, x);
+      else r = RULE.out_gen(q, { ...x, who:"res" });
+      const pre = fr
+        ? "외국 국적 재외동포가 국내에서 영업하거나 6개월 이상 체재하면 외국인거주자이므로, 재외동포 국내재산 반출 절차가 아니라 외국인거주자 지급 절차(규정 제4-4조: 취득경위 입증 또는 연간 미화 5만불)를 따릅니다. "
+        : "거주자인 재외동포(국내에 사는 영주권자 등)는 재외동포 국내재산 반출 절차를 쓸 수 없고 일반 거주자와 같은 지급 절차를 따릅니다. 해외직접투자·해외부동산 같은 자본거래 자금이면 제7장·제9장의 신고를 먼저 해야 합니다. ";
+      r.concl = pre + NOTE + " " + r.concl;
+      r.v["요지"] = (fr ? "국내에 6개월 넘게 사는 외국 국적 재외동포는 외국인거주자 기준으로 처리합니다. " : "국내에 사는 재외동포는 재산반출 절차 대신 거주자 송금 기준으로 처리합니다. ") + r.v["요지"];
+      r.basis = [(fr ? "외국인은 국내에서 영업활동에 종사하거나 6개월 이상 체재하면 거주자입니다 [시행령 제10조]." : "비거주자였던 국민이 입국해 3개월 이상 체재하면 거주자이고, 국민은 2년 이상 외국 체재 등이 아니면 거주자입니다 [시행령 제10조]."), "국내재산 반출 절차는 비거주자인 재외동포에게만 적용됩니다 [규정 제4-4조].", "거주성이 바뀌어 거주자가 된 영주권자가 자본거래(해외직접투자·해외부동산 등) 사유로 송금하면 신고등 대상인지 확인하고 제7장·제9장의 신고를 이행해야 하며, 이 경우 등록된 자금출처확인서 한도는 차감되지 않습니다 [지침 p.162]."].concat(r.basis);
+      r.cautions = fr ? (r.cautions || []) : ["이미 등록한 자금출처확인서 한도는 거주자로서 송금할 때 차감되지 않고, 나중에 비거주자가 되면 남은 한도로 재산반출 송금을 할 수 있습니다 [지침 p.162]."].concat(r.cautions || []);
+      r.v["본점확인"] = /필요/.test(r.v["본점확인"] || "") ? r.v["본점확인"] : "필요 — 재외동포의 거주성 판정(체재 기간·영업 여부)을 출입국사실증명 등으로 확인";
+      r.ids = (r.ids || []).concat(["시행령 제10조", "규정 제4-4조", "지침 p.162"]);
+      r.more = ["출입국사실증명으로 최근 국내 체재 기간을 확인하세요. 국민은 2년 이상 외국 체재(일시 귀국 3개월 이내 포함)면 비거주자, 외국인은 6개월 이상 국내 체재면 거주자입니다 [시행령 제10조]."].concat(r.more || []);
+      return r;
+    }
+    return R({ v:V("확인 필요", "거주성 판정 후 절차 결정", "지정거래외국환은행의 장 (비거주자인 경우)", "해당 없음", "확인 필요", "확인 필요", "규정 제4-4조제1항제8호; 시행령 제10조", "필요 — 재외동포의 거주자·비거주자 여부를 먼저 확인", "비거주자라면 세무서장 발급 확인서 범위 안에서 지정은행을 통해 반출하고, 거주자라면 재산반출 절차를 쓸 수 없으니 먼저 거주성을 확인하세요."),
+      concl:NOTE + " 따라서 먼저 고객이 비거주자인지 확인하세요. ① 비거주자이면(국민 영주권자는 2년 이상 외국 체재 또는 외국 영업, 외국 국적자는 출국해 3개월 이상 외국 체재) 세무서장 발급 확인서 범위 안에서 지정거래외국환은행을 통해 반출합니다. ② 거주자이면(국내에 사는 영주권자, 국내 6개월 이상 체재 외국 국적자) 재산반출 절차를 쓸 수 없고 거주자·외국인거주자 지급 절차와 자본거래 신고를 따릅니다.",
+      basis:["비거주자인 재외동포만 국내재산 반출 절차를 씁니다 [규정 제4-4조].", "거주자·비거주자 구분 기준 [시행령 제10조].", "비거주자 여부는 출입국사실증명 또는 영업활동 입증서류로 확인합니다 [지침 p.47].", "거주성이 변동된 영주권자의 자본거래 송금은 제7장·제9장 신고를 따릅니다 [지침 p.162]."],
+      steps:["재외동포 해당 여부(외국 국적 취득·영주권)를 확인합니다.", "출입국사실증명 등으로 거주성을 판정합니다.", "비거주자이면 재산반출 절차, 거주자이면 거주자(외국인거주자) 지급 절차로 처리합니다."],
+      docs:["거주성 확인: 출입국사실증명 또는 해외 영업활동 입증서류", "관할세무서장 발급 부동산매각자금확인서 또는 예금등 자금출처확인서 (비거주자인 경우)", "재외동포 확인서류 (외국국적취득 확인서류 또는 영주권 확인서류) · 여권"],
+      forms:["[서식 제3-3호]"], ids:["규정 제4-4조", "시행령 제10조", "지침 p.47", "지침 p.162", "규정 제4-7조"],
+      cautions:["거주성 판정이 결론을 바꿉니다. 판단이 어려우면 본점에 확인하세요."], more:["고객이 지금 해외에 살고 있는지, 국내에 산 지 얼마나 되었는지 질의에 적어 주시면 바로 판정합니다."] });
+  };
+  function generic(q, x, note){
+    const hits = search([x.t ? x.t.kw : "", q].join(" "), 3);
+    const ids = hits.map(h => h.d.id);
+    return R({ v:V("확인 필요", "규칙 범위 밖 — 원문 확인 필요", "확인 필요", "확인 필요", "확인 필요", "확인 필요", ids.filter(i => /^규정|^법|^시행령/.test(i)).slice(0, 2).join("; ") || "확인 필요", "필요 — 내장 판정 규칙이 이 거래유형은 자동 판정하지 않습니다", "이 거래는 자동 판정 범위 밖이라 아래 관련 원문을 확인하고 본점에 문의해 주세요."),
+      concl:(note ? note + " " : "") + "이 거래유형은 내장 판정 규칙으로 자동 판정하지 않습니다. 아래 관련 원문을 확인하고, 결론이 서지 않으면 외환사업부(본점)에 문의하세요.",
+      basis:hits.map(h => `관련 원문 [${h.d.id}]: ${snip(h.d.t, q)}`),
+      steps:["거래 당사자의 거주성, 거래 목적, 금액을 확인합니다.", "관련 원문(아래 근거)과 원문 검색 메뉴로 해당 조문을 확인합니다.", "신고 대상 여부가 불분명하면 본점에 문의합니다."],
+      docs:[APP, IDD, "거래 사유와 금액을 입증하는 서류"], forms:["[서식 제3-1호]"], ids });
+  }
+  function snip(t, q){
+    t = String(t || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ");
+    const ws = String(q || "").split(/[\s,.?!·]+/).filter(w => w.length >= 2);
+    let at = -1; for (const w of ws){ const i = t.indexOf(w); if (i >= 0){ at = i; break; } }
+    const s = Math.max(0, at - 60); return (s ? "…" : "") + t.slice(s, s + 220).trim() + "…";
+  }
+
+  function judge(t, q, facts, ctx){
+    ctx = ctx || {};
+    const x = { t, ctxPayer:ctx.payer || "", who:whoOf(q + " " + (facts || ""), ctx), whoR:whoOf(q, { payer:ctx.payee || "" }), usd:usdOf(q, ctx), acc:!!($("#acc") && $("#acc").checked) || /누계|올해\s*이미|이미\s*보낸/.test(q) };
+    const k = t && t.k;
+    const f = RULE[k] || (k === "out_frgn" ? RULE.out_frgn : null);
+    const r = f ? f(q, x) : generic(q, x);
+    LAST = { q, r };
+    return r;
+  }
+  function textOf(r){
+    const L = ["<<판정>>"];
+    for (const k of ["신고여부","신고유형","신고기관","신고시기","지정거래외국환은행","신고구분","근거조문","본점확인","요지"]) L.push(`${k}: ${r.v[k]}`);
+    L.push("<</판정>>", "## 결론", r.concl, "", "## 근거", ...r.basis.map(b => "- " + b), "", "## 처리 절차", ...r.steps.map((s, i) => `${i + 1}. ${s}`), "", "## 제출서류", ...r.docs.map(d => "- " + d), "", "## 필요 서식", r.forms.length ? r.forms.join(", ") : "해당 없음");
+    if (r.cautions.length) L.push("", "## 유의사항", ...r.cautions.map(c => "- " + c));
+    if (r.more.length) L.push("", "## 추가 확인 필요", ...r.more.map(c => "- " + c));
+    L.push("", "※ 내장 판정 엔진 결과입니다. 외국환거래규정·취급지침 원문 조항에 연결된 규칙으로 판정했으며 외부 AI를 쓰지 않습니다. 질의에 적힌 사실관계 중 규칙이 읽지 못한 부분이 있을 수 있으니 '추가 확인 필요'와 근거 원문을 함께 확인하세요.");
+    return L.join("\n");
+  }
+  function parseHead(s){
+    const ty = (s.match(/\[거래유형\]\s*(.+)/) || [])[1] || "";
+    const q = ((s.match(/\[질의\]\n([\s\S]*?)(?:\n\n\[|$)/) || [])[1] || "").trim();
+    const facts = ((s.match(/\[직원이 확인한 사실관계\]\n([\s\S]*?)(?:\n\n\[|$)/) || [])[1] || "").trim();
+    const t = TYPES.find(x => x.n === ty.trim()) || guessType(q);
+    return { t, q, facts };
+  }
+  const KB2 = [
+    { re:/수입.{0,12}(서류|증빙|징구)|(서류|증빙).{0,12}수입|송금\s*방식\s*수입|수입\s*대금.{0,10}(보낼|송금|지급)|인보이스.{0,10}(서류|필요)/, sum:{ 구분:"② 은행 확인 · 신고 불요", 결론:"물품 수입대금은 신고 없이 증빙서류를 확인해 보냅니다. 사후송금은 Invoice와 B/L(또는 수입신고필증), 사전송금은 Invoice·계약서로 확인합니다.", 서류:["송금신청서", "상업송장(Invoice) 또는 계약서", "B/L 또는 수입신고필증 (사후송금)"], 유의:"사전송금은 결제방식·무역거래형태·대응수입예정일까지 확인하고, 수취인이 수출자와 다르면 제3자 지급 신고를 확인하세요.", 근거:"규정 제4-2조" }, ids:["규정 제4-2조", "지침 p.52", "규정 제4-8조"],
+      a:"**수입대금 지급 서류** [지침 p.52]\n- **사후송금**(선적서류·물품 수령 후): 송금신청서, 상업송장(Invoice) 또는 계약서, B/L 또는 수입신고필증(통관방식).\n- **사전송금**(선적서류·물품 수령 전): 송금신청서, 계약서·송장·Offer sheet·Purchase order·대금청구서 등 증빙서류. 거래상대방·거래금액·거래품목·대금결제방식·무역거래형태·대응수입예정일을 확인하고, 증빙으로 확인이 안 되면 지급신청서 별지로 확인합니다.\n- 대외무역법에 따른 물품 수입대금은 외국환거래법상 신고가 필요 없는 경상지급입니다 [규정 제4-2조].\n- 수출입대금 지급은 금액과 관계없이 관세청 통보, 건당 미화 1만불 초과는 국세청 통보 대상입니다 [규정 제4-8조].\n- 계약건당 10만불 초과 수입대금을 선적서류·물품 수령 1년 전을 넘겨 지급하면 한국은행 신고입니다 [규정 제5-8조]." },
+    { re:/유학|학비|재학|입학|어학\s*연수/, sum:{ 구분:"② 지정은행 확인 · 신고 불요", 결론:"유학생 경비는 거래외국환은행을 지정하고 유학을 입증하는 서류를 받아 신고 없이 보냅니다.", 서류:["송금신청서 · 여권 사본", "입학허가서 (이후 매년 재학증명서)", "거래외국환은행 지정(변경)신청서"], 유의:"유학생은 매 연도 재학 입증 서류를 다시 받아야 합니다.", 근거:"규정 제4-5조" }, ids:["규정 제4-5조", "지침 p.60"],
+      a:"- 해외유학생·해외체재자가 해외여행경비를 지급하려면 거래외국환은행을 지정하고 해외유학(체재)을 입증하는 서류를 내야 하며, 유학생은 매 연도 재학 입증 서류를 냅니다 [규정 제4-5조].\n- 유학생은 수학기관의 입학허가서 등, 체재자는 출장·파견증명서 등을 받습니다 [지침 p.60].\n- 등록금 등 교육 경비를 수학기관에 직접 보내는 것도 가능합니다 [규정 제4-5조]." },
+    { re:/해외\s*부동산|부동산.{0,8}(취득|구입|매입|계약)|외국.{0,6}(주택|아파트|콘도)/, sum:{ 구분:"② 지정은행 신고수리", 결론:"해외부동산은 지정거래외국환은행에 부동산취득신고서를 내고 수리를 받은 뒤 송금하고, 송금 후 3개월 안에 취득보고서를 냅니다.", 서류:["부동산취득신고(수리)서 (별지 제9-12호)", "부동산 매매계약서", "실명확인증표"], 유의:"계약 전 내신고수리를 받으면 취득예정액의 10% 이내 계약금을 먼저 보낼 수 있고, 3개월 안에 정식 수리를 받거나 회수해야 합니다.", 근거:"규정 제9-39조" }, ids:["규정 제9-39조", "규정 제9-40조"],
+      a:"- 상속·증여 취득, 유학생·체재자 본인 거주 임차, 보증금 1만불 이하 임차는 신고 불요 [규정 제9-39조].\n- 그 외 취득은 지정거래외국환은행에 신고하여 수리를 받아야 하고, 계약 확정 전 내신고수리 시 취득예정액의 10% 이내 선지급 가능(3개월 이내 정식 수리 또는 회수) [규정 제9-39조].\n- 사후관리: 해외부동산취득보고서는 취득대금 송금 후 3개월 이내, 처분(변경)보고서는 처분·변경 후 3개월 이내 [규정 제9-40조]." },
+    { re:/외국인.{0,12}(급여|월급|임금|보수|퇴직|소득)|(급여|월급|임금).{0,12}외국인/, sum:{ 구분:"② 지정은행 확인 · 신고 불요", 결론:"외국인 근로자가 국내에서 받은 급여 범위 안이면 급여 입증서류를 받고 지정거래외국환은행을 통해 신고 없이 보냅니다.", 서류:["송금신청서 · 여권 사본", "고용주가 확인한 급여명세표 등 급여 입증서류", "거래외국환은행 지정(변경)신청서 (지정 전이면)"], 유의:"입증서류 없이 보낼 수 있는 금액은 연간 미화 5만불까지입니다.", 근거:"규정 제4-4조" }, ids:["규정 제4-4조", "지침 p.44", "지침 p.45"],
+      a:"- 국내 고용·근무로 받은 보수·소득 범위 이내는 취득경위 입증서류를 내고 지정거래외국환은행을 통해 지급 [규정 제4-4조]. 지정은 여권만으로 가능 [지침 p.44].\n- 입증서류가 없으면 연간 미화 5만불 범위 내에서 지정거래외국환은행을 통해 지급 [규정 제4-4조].\n- 출국만기보험 수령은 지정은행을 통하지 않아도 됩니다 [규정 제4-4조]." },
+    { re:/^\uFFFF$/, sum:{ 구분:"② 지정은행 확인 · 신고 불요", 결론:"비거주자인 재외동포는 세무서장이 발급한 확인서 금액 안에서 지정거래외국환은행을 통해 신고 없이 보냅니다.", 서류:["송금신청서 · 여권 사본(외국국적 취득 확인)", "예금등 자금출처확인서 (예금·신탁 등 반출 시)", "부동산매각자금확인서 (부동산 처분대금 반출 시)"], 유의:"자금출처확인서 '유효기간 1년'·'10만불 이하 면제' 기준은 원문에 없으니 쓰지 마세요.", 근거:"규정 제4-4조" }, ids:["규정 제4-4조", "지침 p.46"],
+      a:"- 비거주자인 재외동포는 관할세무서장이 발급한 부동산매각자금확인서 또는 자금출처확인서의 범위 이내에서 지정거래외국환은행을 통해 지급 [규정 제4-4조].\n- 해외이주비 지급과 중복 적용 불가 [지침 p.42]." },
+    { re:/현지\s*법인|해외\s*직접\s*투자|대부\s*투자|해외\s*지사/, sum:{ 구분:"② 외국환은행 사전신고", 결론:"해외직접투자(지분 10% 이상, 이미 투자한 법인에 1년 이상 대여 포함)는 송금 전에 외국환은행에 신고하고, 송금보고는 즉시, 외화증권(채권)취득보고는 6개월 안에 합니다.", 서류:["해외직접투자 신고서(보고서) (별지 제9-1호)", "사업계획서 (대부투자는 금전대여계약서)", "납세증명서·신용정보 미등록 입증서류"], 유의:"신고 은행은 주채권은행 → 여신최다은행 → 거주자가 지정하는 은행 순서로 정해집니다.", 근거:"규정 제9-5조" }, ids:["시행령 제8조", "규정 제9-5조", "규정 제9-9조"],
+      a:"- 해외직접투자: 외국법인 지분 10% 이상, 10% 미만이라도 임원 파견 등 관계 수립, 이미 투자한 외국법인에 상환기간 1년 이상 금전 대여 [시행령 제8조].\n- 신고: 주채권은행 → 여신최다은행 → 거주자가 지정하는 은행 [규정 제9-5조].\n- 사후관리: 송금(투자)보고서 즉시, 외화증권(채권)취득보고서 납입·대여 후 6개월 이내 [규정 제9-9조]." },
+  ];
+  KB2.unshift({ re:/재외동포.{0,25}(거주자|비거주자).{0,25}(차이|다르|다른|다름|구분|달라|어떻게)|(거주자|비거주자).{0,25}재외동포.{0,25}(차이|다르|다른|다름|구분|달라|어떻게)|재산\s*반출.{0,20}(바뀌|바뀐|개정|달라|변경|차이)|거주자.{0,6}비거주자.{0,20}(재산\s*반출|재외동포)/, sum:{ 구분:"거주성에 따라 절차 구분", 결론:"2025.2.10부터 재산반출 절차는 비거주자인 재외동포만 씁니다. 거주자인 재외동포는 거주자(외국 국적이면 외국인거주자) 지급 절차와 자본거래 신고를 따릅니다.", 서류:["재외동포 확인서류 (외국국적취득·영주권 확인)", "비거주자 입증서류 (출입국사실증명 또는 해외 영업활동 입증서류)", "부동산매각자금확인서 또는 예금등 자금출처확인서 (비거주자)"], 유의:"거주성은 확인서를 낸 시점에 판정하고 한도 소진 때까지 유지됩니다. 서류 발급이 불가하면 거주성확인서(지침서식 제3-3호)를 받습니다.", 근거:"규정 제4-4조" }, ids:["규정 제4-4조", "규정 제4-7조", "시행령 제10조", "지침 p.46", "지침 p.47", "지침 p.162"],
+    a:"**재외동포 국내재산 반출 — 거주자·비거주자 구분** (2025.2.10 규정 개정)\n- 예전: 거주자·비거주자 구분 없이 '재외동포 국내재산 반출절차'(규정 제4-7조)를 적용 → **2025.2.10 삭제** [규정 제4-7조].\n- **비거주자인 재외동포**: 관할세무서장 발급 부동산매각자금확인서 또는 예금등 자금출처확인서 범위 안에서 지정거래외국환은행을 통해 지급(신고 불요) [규정 제4-4조]. 재외동포 확인(외국국적취득·영주권 확인서류) + 비거주자 입증(출입국사실증명 또는 해외 영업활동 입증서류, 부득이하면 거주성확인서 지침서식 제3-3호) [지침 p.46], [지침 p.47].\n- **거주자인 재외동포**(국내에 사는 영주권자 등): 재산반출 절차 불가. 일반 거주자 지급 절차(증빙 미제출 연간 10만불 등)를 따르고, 해외직접투자·해외부동산 등 자본거래 자금이면 제7장·제9장 신고를 먼저 이행. 이때 등록된 자금출처확인서 한도는 차감되지 않고, 나중에 비거주자가 되면 남은 한도로 반출 가능 [지침 p.162].\n- **외국 국적 재외동포가 국내 6개월 이상 체재**(또는 국내 영업): 외국인거주자 → 취득경위 입증 또는 연간 미화 5만불 [규정 제4-4조], [시행령 제10조].\n- 거주성 판정 시점: 확인서를 은행에 낸 시점에 비거주자임을 확인하고, 그 확인서 한도 소진 때까지 판정 유지 [지침 p.162].\n- 거주성 기준: 국민은 2년 이상 외국 체재(일시 귀국 3개월 이내 포함)·외국 영업 시 비거주자, 외국인은 6개월 이상 국내 체재 시 거주자, 거주자였던 외국인이 출국해 3개월 이상 외국 체재 시 비거주자 [시행령 제10조]." });
+  const KB = [
+    { re:/거주성|(거주자|비거주자)\s*(인가|인지|여부|판단|구분|기준|요건)|영주권|해외\s*체재\s*기간|외국인거주자\s*(기준|요건|판단)/, ids:["시행령 제10조", "지침 p.25"], a:"**거주자·비거주자 판단 기준** (외국환거래법 제3조, 시행령 제10조)\n- 대한민국 국민: 원칙적으로 거주자입니다. 다만 외국에서 영업활동에 종사하는 자, 외국의 국제기구 근무자, **2년 이상 외국에 체재하는 자**는 비거주자입니다(일시 귀국해 3개월 이내 머문 기간은 2년에 포함) [시행령 제10조].\n- 비거주자였던 국민이 입국해 **3개월 이상** 국내에 체재하면 거주자입니다 [시행령 제10조].\n- 외국인: 국내에서 영업활동에 종사하거나 **6개월 이상** 국내에 체재하면 거주자(외국인거주자)입니다. 외교관·국제기구 근무자 등은 제외합니다. 거주자였던 외국인이 출국해 외국에서 3개월 이상 체재하면 비거주자입니다 [시행령 제10조].\n- 생계를 주로 함께하는 동거 가족은 그 사람의 구분을 따릅니다 [시행령 제10조].\n- 외국인의 국내 거주기간은 여권 또는 출입국사실증명서의 입국일자로 산정합니다 [지침 p.25].\n- 영주권 자체가 기준은 아니고, 체재 기간·영업 여부로 판단합니다." },
+    { re:/제3자|상계|기간\s*초과|1년\s*(초과|넘)|은행을\s*통하지|지급\s*방법|결제\s*방법|상호계산/, ids:["규정 제5-10조", "규정 제5-4조", "규정 제5-8조", "규정 제5-11조", "규정 제5-5조"], a:"**비전형적 결제방법 신고 기준** (외국환거래규정 제5장)\n- **제3자 지급등**: 미화 5천불 이하 신고 불요, 5천불 초과 1만불 이내 외국환은행 신고, 그 외 한국은행 신고. 나눠서 지급하면 합산합니다 [규정 제5-10조].\n- **상계**: 일방 금액 5천불 이하 등은 신고 불요. 양자간 상계는 외국환은행 신고 또는 상계 후 1개월 이내 사후보고, 다국적기업 상계센터·다수 당사자 상계(다자간)는 한국은행 신고 [규정 제5-4조].\n- **상호계산**: 지정거래외국환은행에 상호계산신고서 제출 [규정 제5-5조].\n- **기간 초과 지급등**: 계약건당 10만불 초과 수출대금을 선적 1년 전을 넘겨 수령하거나, 수입대금을 수령 1년 전을 넘겨 지급하면 한국은행 신고 [규정 제5-8조].\n- **외국환은행을 통하지 않는 지급등**: 규정이 정한 예외가 아니면 한국은행 신고 [규정 제5-11조]." },
+    { re:/자본거래|해외직접투자|현지법인|해외부동산|재산\s*반출|신고\s*기관|사후\s*관리|취득\s*보고/, ids:["시행령 제8조", "규정 제9-5조", "규정 제9-9조", "규정 제9-39조", "규정 제9-40조", "규정 제4-4조"], a:"**주요 자본거래 신고기관과 사후관리**\n- **해외직접투자**(외국법인 지분 10% 이상, 또는 10% 미만이라도 임원 파견 등 관계 수립) [시행령 제8조]: 주채권은행 → 여신최다은행 → 거주자가 지정하는 은행에 사전신고 [규정 제9-5조]. 송금(투자)보고서는 송금 즉시, 외화증권(채권)취득보고서는 납입 후 6개월 이내 [규정 제9-9조].\n- **해외부동산 취득**: 지정거래외국환은행에 사전 신고수리 [규정 제9-39조]. 취득보고서는 취득대금 송금 후 3개월 이내 [규정 제9-40조].\n- **재외동포 국내재산 반출**: 관할세무서장이 발급한 부동산매각자금확인서·자금출처확인서 범위 안에서 지정거래외국환은행을 통해 지급(별도 신고는 없고 은행이 확인) [규정 제4-4조]." },
+    { re:/ORIS|무증빙|증빙\s*없|10만\s*불|분할|스머핑|쪼개|나눠/, ids:["규정 제4-3조", "지침 p.38", "규정 제5-10조"], a:"**ORIS 한도와 분할 송금 점검**\n- 지급증빙서류 없이 보내는 송금은 연간 누계 미화 10만불까지이며, 모든 외국환업무취급기관등을 통한 지급을 합산합니다 [규정 제4-3조]. 한도는 한국은행 해외송금 통합관리시스템(ORIS)으로 관리하므로 창구에서 반드시 조회하세요 [지침 p.38].\n- 10만불을 넘으면 건당 5천불 이내이거나, 거래 내용과 금액을 서류로 확인한 경우에만 보낼 수 있습니다 [규정 제4-3조].\n- 같은 사람이나 가족·관련자가 5천불·1만불 바로 아래 금액으로 여러 번 나눠 보내는 경우 규정 회피성 분할 송금인지 점검하세요. 규정은 분할한 지급을 합산해 판단합니다 [규정 제5-10조]." }
+  ];
+  function bestSnip(t, q){
+    t = String(t || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ");
+    const ws = String(q || "").split(/[\s,.?!·()]+/).filter(w => w.length >= 2 && !GT_STOP.has(w));
+    const ss = t.split(/(?<=다\.|\.)\s+/); let best = "", bs = -1;
+    for (const s of ss){ const sc = ws.filter(w => s.includes(w)).length; if (sc > bs){ bs = sc; best = s; } }
+    return bs > 0 ? (best.length > 220 ? best.slice(0, 218) + "…" : best) : "";
+  }
+  function sumBlock(o){ return "<<요약>>\n" + ["구분", "결론", "서류", "유의", "근거"].map(k => `${k}: ${Array.isArray(o[k]) ? o[k].join(" | ") : (o[k] || "")}`).join("\n") + "\n<</요약>>\n"; }
+  function chatAnswer(q){
+    const t = guessType(q), hits = search(q, 4);
+    const k2 = KB2.find(k => k.re.test(q));
+    if (k2){ k2.ids.forEach(i => { try { if (agRefs && byId[i]) agRefs.add(i); } catch {} }); return sumBlock(k2.sum) + k2.a + "\n\n※ 내장 지식베이스 답변입니다(외부 AI 미사용). 실제 거래는 'AI 검토'에서 4단계 판정을 받으세요."; }
+    const kbm = KB.filter(k => k.re.test(q));
+    if ((guessType.prio || !kbm.length) && t && RULE[t.k] && guessType.score >= 4){
+      const r = RULE[t.k](q, { t, who:whoOf(q, {}), whoR:whoOf(q, {}), usd:usdOf(q, {}), acc:/누계|이미/.test(q) });
+      (r.ids || []).forEach(i => { try { if (agRefs && byId[i]) agRefs.add(i); } catch {} });
+      const tg = /^②/.test(r.v["신고구분"] || "") && /불요/.test(r.v["지정거래외국환은행"] || "") ? (/신고 필요|신고수리/.test(r.v["신고여부"]) ? "② 외국환은행 신고" : "② 외국환은행 확인") : r.v["신고구분"];
+      return sumBlock({ 구분:`${tg} · ${r.v["신고여부"]}`, 결론:r.v["요지"], 서류:r.docs.slice(0, 3), 유의:(r.cautions[0] || r.more[0] || "").replace(/\s*\[[^\]]+\]/g, ""), 근거:String(r.v["근거조문"] || "").split(";")[0] }) + `**${t.n}** 기준\n\n${r.concl}\n\n**근거**\n${r.basis.map(b => "- " + b).join("\n")}\n\n**제출서류 전체**\n${r.docs.map(d => "- " + d).join("\n")}\n\n※ 내장 판정 규칙 답변입니다(외부 AI 미사용).`;
+    }
+    if (!kbm.length){
+      const sn = hits.map(h => ({ id:h.d.id, s:bestSnip(h.d.t, q) })).filter(x => x.s);
+      return sumBlock({ 구분:"원문 검색", 결론:sn.length ? "질문과 관련된 원문 조항을 찾았습니다. 정확한 판정은 'AI 검토' 메뉴에서 거래 내용을 적어 받으세요." : "내장 원문에서 관련 내용을 찾지 못했습니다. 조문 번호나 서류 이름으로 다시 물어보세요.", 유의:"원문 검색 결과는 참고용입니다. 결론은 4단계 판정이나 본점 확인으로 정하세요." }) + (sn.length ? "### 관련 원문\n" + sn.map(x => `- [${x.id}] ${x.s}`).join("\n") : "") + "\n\n※ 내장 원문 검색 결과입니다(외부 AI 미사용).";
+    }
+    let out = sumBlock({ 구분:"실무 기준", 결론:kbm[0].a.split("\n")[0].replace(/\*\*/g, "").replace(/\s*\([^)]*\)\s*$/, "") + " — 아래 상세를 확인하세요.", 유의:"사실관계에 따라 결론이 달라질 수 있으니 실제 거래는 'AI 검토'로 판정받으세요." });
+    const kb = KB.filter(k => k.re.test(q)).slice(0, 2);
+    if (kb.length){ out += kb.map(k => k.a).join("\n\n") + "\n\n"; kb.forEach(k => k.ids.forEach(i => { try { if (agRefs && byId[i]) agRefs.add(i); } catch {} })); }
+    const kwHit = t && t.kw && t.kw.split(/\s+/).filter(w => w.length >= 2 && q.includes(w)).length >= 2;
+    if (kwHit && RULE[t.k]){
+      const r = RULE[t.k](q, { t, who:whoOf(q, {}), usd:usdOf(q, {}), acc:/누계|이미/.test(q) });
+      out += `**${t.n}** 기준으로 보면: ${r.concl}\n\n**신고 구분** ${r.v["신고구분"]} · **신고기관** ${r.v["신고기관"]}\n\n**제출서류**\n${r.docs.map(d => "- " + d).join("\n")}\n\n**근거**\n${r.basis.map(b => "- " + b).join("\n")}\n\n`;
+      (r.ids || []).forEach(i => { try { if (agRefs) agRefs.add(i); } catch {} });
+    }
+
+    return out + "\n\n※ 내장 원문 검색 결과입니다(외부 AI 미사용). 정확한 판정이 필요한 거래는 'AI 검토'의 4단계 판정을 이용하세요.";
+  }
+  function sheetOf(all){
+    const ans = all.split("[직원용 검토 결과]")[1] || ""; if (!ans) return null;
+    const ty = ((all.match(/\[거래유형\]\s*(.+)/) || [])[1] || "외환거래").split(" · ").pop().trim();
+    const p = splitVerdict(ans), v = p.v || {}, body = p.body || "";
+    const sec = n => { const m = body.match(new RegExp("## " + n + "\\n([\\s\\S]*?)(?=\\n## |\\n※|$)")); return m ? m[1].split("\n").map(l => l.replace(/^\s*(?:-|\d+\.)\s*/, "").replace(/\s*\[[^\]]+\]/g, "").trim()).filter(Boolean) : []; };
+    const docs = sec("제출서류"), cau = sec("유의사항");
+    return { title:ty + " 안내", intro:v["요지"] || "", report:{ needed:v["신고여부"] || "확인 필요", agency:/해당 없음/.test(v["신고기관"] || "") ? "해당 없음" : (v["신고기관"] || "창구에서 확인"), when:v["신고시기"] || "해당 없음" },
+      steps:sec("처리 절차").slice(0, 6), documents:docs.map(d => { const m = d.match(/^(.*?)\s*\((.*)\)\s*$/); return m ? { name:m[1], note:m[2] } : { name:d, note:"" }; }),
+      cautions:(cau.length ? cau : ["정확한 처리 방법은 창구 직원과 확인해 주세요."]).slice(0, 4), basis:String(v["근거조문"] || "").split(/;\s*/).filter(x => /제/.test(x)).map(x => "외국환거래" + x.trim()) };
+  }
+
+  window.fxLocal = {
+    judge, textOf,
+    async sample(input, opts){
+      const f = first(input), all = txt(input);
+      if (is(f, "pre")) return { text:"" };
+      if (is(f, "ver")) return { text:"<<검증>>\n결과: 해당 없음\n요지: 내장 판정 엔진은 규정 원문 조항에 연결된 규칙으로 판정하므로 2차 검토를 하지 않습니다.\n<</검증>>" };
+      if (is(f, "chat")) return { text:chatAnswer(lastU(input).split("\n\n[검색된 관련 원문]")[0].split("\n\n관련 원문이 있을")[0].trim()) };
+      const h = parseHead(lastU(input));
+      let ctx = {}; try { ctx = formSnapshot(); } catch {}
+      const r = judge(h.t, h.q, h.facts, ctx);
+      try { if (curRefs) r.ids.forEach(i => { if (byId[i]) curRefs.add(i); }); } catch {}
+      const text = textOf(r);
+      if (opts && opts.onText) try { opts.onText({ text }); } catch {}
+      return { text, truncated:false };
+    },
+    async json(input, opts){
+      const f = first(input);
+      if (is(f, "tri")) return { need_more:false };
+      if (is(f, "sheet")) { const s = sheetOf(txt(input)); if (s) return s; }
+      throw Object.assign(new Error("local"), { code:"local_unsupported" });
+    }
+  };
+})();
+
+/* ---------- 웹: Claude 버튼은 Claude 버전(심층 검토) 열기 ---------- */
+(function(){
+  const lab = () => { const t = $("#claudeBtnT"); if (t) t.textContent = "Claude 심층 검토"; };
+  claudeBtnSync = lab; lab();
+  const open = which => {
+    let q = "";
+    if (which === "ask") q = ($("#qbox").value || "").trim();
+    else if (which === "chat") q = ($("#chatQ").value || "").trim();
+    toClaude(q, t => { toast(q ? t : "Claude 버전을 열었습니다. Claude에 로그인한 상태로 질의하면 AI가 심층 검토합니다.", 6000); });
+  };
+  $("#claudeBtn").onclick = () => open("ask");
+  const mc = $("#mClaude"); if (mc) mc.onclick = () => open("ask");
+  document.addEventListener("click", e => { const b = e.target.closest("[data-claude-deep]"); if (b) open(b.dataset.claudeDeep); });
+  const sh = document.querySelector('#mSheet [data-ms="claude"]'); if (sh) sh.innerHTML = '<i aria-hidden="true">🤖</i>Claude 심층 검토';
+})();
+
+/* ---------- 직원 피드백 제보 ---------- */
+let FB_IMG = "";
+const FBS = window.__WEB ? {
+  ok: () => !!window.fxSb,
+  add: async row => { const r = await fxSb().from("fx_feedback").insert(row); if (r.error) throw r.error; },
+  list: async () => { const r = await fxSb().from("fx_feedback").select("*").order("created_at", { ascending:false }).limit(300); if (r.error) throw r.error; return r.data || []; },
+  del: async id => { const r = await fxSb().from("fx_feedback").delete().eq("id", id); if (r.error) throw r.error; }
+} : {
+  ok: () => true,
+  add: async row => { const d = await claude.use("db"), u = await claude.use("user"); if (!d || !u) throw new Error("db"); const uid = await u.id(), ref = d.doc("feedback/" + uid), s = await ref.get(); const items = ((s.exists && s.data()) || {}).items || []; items.push({ id:"f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), created_at:new Date().toISOString(), ...row }); await ref.set({ items:items.slice(-20) }); },
+  list: async () => { const d = await claude.use("db"); const s = await d.collection("feedback").limit(500).get(); const out = []; s.docs.forEach(x => ((x.data() || {}).items || []).forEach(it => out.push(it))); return out.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))); },
+  del: async id => { const d = await claude.use("db"); const s = await d.collection("feedback").limit(500).get(); for (const x of s.docs){ const it = (x.data() || {}).items || []; if (it.some(i => i.id === id)){ await d.doc("feedback/" + x.id).set({ items:it.filter(i => i.id !== id) }); return; } } }
+};
+function fbShrink(file){
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => { const im = new Image(); im.onload = () => {
+    const k = Math.min(1, 1400 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); let q = .8, out = c.toDataURL("image/jpeg", q);
+    while (out.length > (window.__WEB ? 900000 : 280000) && q > .3){ q -= .1; out = c.toDataURL("image/jpeg", q); }
+    out.length > (window.__WEB ? 1400000 : 400000) ? rej(new Error("big")) : res(out); }; im.onerror = rej; im.src = fr.result; }; fr.onerror = rej; fr.readAsDataURL(file); });
+}
+function fbOpen(query, answer){
+  let d = document.getElementById("fbDlg");
+  if (!d){
+    d = document.createElement("div"); d.id = "fbDlg"; d.className = "wl hidden"; d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true");
+    d.innerHTML = `<form class="wl-card"><div class="nm-h"><b>💬 피드백 / 오류 제보</b><span>틀린 답이나 보완할 내용을 알려 주세요. 외환사업부가 확인해 판정 기준에 반영합니다.</span></div>
+      <label class="fl"><span>질의 내용</span><textarea class="field ro" name="q" readonly></textarea></label>
+      <label class="fl"><span>현재 답변</span><textarea class="field ro" name="a" readonly style="min-height:110px"></textarea></label>
+      <label class="fl"><span>올바른 규정 / 수정 요청 내용</span><textarea class="field" name="c" required placeholder="예) 규정 제4-4조에 따르면 ○○ 서류도 받아야 합니다." style="min-height:100px"></textarea></label>
+      <label class="fl"><span>캡처 이미지 첨부 <em>선택 · 붙여넣기(Ctrl+V)도 됩니다</em></span><input type="file" name="img" accept="image/*" class="field"></label>
+      <img class="fb-prev hidden" alt="첨부 미리보기"><p class="hint">고객 이름·주민번호·계좌번호가 보이는 캡처는 올리지 마세요.</p>
+      <p class="wl-st" role="status"></p><div class="nm-btns"><button class="btn ghost" type="button" data-x>닫기</button><button class="btn" type="submit">제보하기</button></div></form>`;
+    document.body.appendChild(d);
+    const f = d.querySelector("form"), pv = d.querySelector(".fb-prev"), st = d.querySelector(".wl-st");
+    const take = async file => { if (!file || !/^image\//.test(file.type)) return; st.textContent = "이미지를 줄이는 중…"; try { FB_IMG = await fbShrink(file); pv.src = FB_IMG; pv.classList.remove("hidden"); st.textContent = ""; } catch { FB_IMG = ""; pv.classList.add("hidden"); st.textContent = "이미지가 너무 큽니다. 화면 일부만 캡처해 주세요."; } };
+    f.img.onchange = () => take(f.img.files[0]);
+    d.addEventListener("paste", e => { const it = [...(e.clipboardData || {}).items || []].find(x => /^image\//.test(x.type)); if (it) take(it.getAsFile()); });
+    d.querySelector("[data-x]").onclick = () => d.classList.add("hidden");
+    f.onsubmit = async ev => {
+      ev.preventDefault(); const c = f.c.value.trim(); if (c.length < 2){ st.textContent = "수정 요청 내용을 적어 주세요."; return; }
+      if (!FBS.ok()){ st.textContent = "지금은 제보를 저장할 수 없습니다."; return; }
+      st.textContent = "저장 중…"; f.querySelector("[type=submit]").disabled = true;
+      try {
+        const me = window.FX_ME || {}, row = { empno: me.empno || String(me.email || "").split("@")[0] || me.name || "", query: maskPII(f.q.value).text, current_answer: f.a.value, correction: maskPII(c).text, image_url: FB_IMG || null };
+        await FBS.add(row);
+        st.textContent = ""; d.classList.add("hidden"); toast("제보를 접수했습니다. 고맙습니다!", 3500);
+      } catch (e){ st.textContent = /relation|does not exist|schema cache/i.test(e && e.message || "") ? "피드백 저장소가 아직 준비되지 않았습니다(관리자 SQL 실행 필요)." : "저장하지 못했습니다. 잠시 뒤 다시 시도하세요."; }
+      finally { f.querySelector("[type=submit]").disabled = false; }
+    };
+  }
+  const f = d.querySelector("form"); FB_IMG = ""; f.reset(); f.q.value = query || ""; f.a.value = answer || ""; d.querySelector(".fb-prev").classList.add("hidden"); d.querySelector(".wl-st").textContent = "";
+  d.classList.remove("hidden"); setTimeout(() => f.c.focus(), 50);
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-fb-box]");
+  if (b){ const box = b.closest(".result"); return fbOpen(box.dataset.fbq || (box.querySelector(".r-q") || {}).textContent || "", box.dataset.fba || ""); }
+  const c = e.target.closest("[data-fb-chat]");
+  if (c){ const i = +c.dataset.fbChat, m = CHAT[i]; let q = ""; for (let j = i - 1; j >= 0; j--) if (CHAT[j].role === "user"){ q = CHAT[j].text; break; } return fbOpen(q, m ? m.text : ""); }
+});
+
+/* ---------- 관리자: 직원 피드백 & AI 일괄 개선 ---------- */
+let FB_ROWS = [];
+const kstFull = iso => { const d = new Date(iso); return isNaN(d) ? "" : new Date(d.getTime() + 9 * 3600e3).toISOString().replace("T", " ").slice(0, 19); };
+function fbPrompt(rows){
+  return "[직원 실무 피드백 기반 외환 Q&A 엔진 자동 업데이트 요청]\n외환사업부 직원들이 파일럿 중 제보한 다음 실무 정정 사항을 지식베이스에 즉시 반영해 주세요:\n"
+    + rows.map(r => `   - 질문: ${String(r.query || "").replace(/\s+/g, " ").trim()} | 직원 수정의견: ${String(r.correction || "").replace(/\s+/g, " ").trim()}`).join("\n");
+}
+async function fbLoad(){
+  const host = $("#fbList"), st = $("#fbSt"); if (!host || !FBS.ok()) return;
+  st.textContent = "불러오는 중…";
+  try {
+    FB_ROWS = await FBS.list(); st.textContent = `${FB_ROWS.length}건`;
+    host.innerHTML = FB_ROWS.length ? `<table class="fbl"><thead><tr><th>일시</th><th>${window.__WEB ? "사번" : "작성자"}</th><th>질문</th><th>수정 요청</th><th>첨부</th><th></th></tr></thead><tbody>` + FB_ROWS.map(x => `<tr><td>${esc(kstFull(x.created_at))}</td><td>${esc(x.empno || "-")}${(window.FX_STAFF || {})[x.empno] ? `<div class="hint">${esc(FX_STAFF[x.empno])}</div>` : ""}</td><td>${esc(String(x.query || "").slice(0, 200))}<details><summary class="hint">당시 답변</summary><div class="hint" style="white-space:pre-wrap;max-height:220px;overflow:auto">${esc(String(x.current_answer || "").replace(/<<\/?판정>>|<<\/?요약>>/g, "").slice(0, 3000))}</div></details></td><td class="c">${esc(x.correction || "")}</td><td>${x.image_url && /^data:image\//.test(x.image_url) ? `<img src="${x.image_url}" alt="첨부 캡처" data-fbimg>` : "-"}</td><td><button class="btn ghost sm" type="button" data-fbdel="${esc(x.id)}">처리 완료(삭제)</button></td></tr>`).join("") + `</tbody></table>` : '<p class="hint">아직 접수된 피드백이 없습니다.</p>';
+  } catch (e){ st.textContent = /relation|does not exist|schema cache/i.test(e && e.message || "") ? "피드백 표가 아직 없습니다. Supabase에서 피드백 SQL을 실행해 주세요." : "불러오지 못했습니다. (관리자 계정으로 로그인했는지 확인하세요)"; host.innerHTML = ""; }
+}
+function admExtras(){
+  const tab = $("#tab-admin"); if (!tab || $("#fbSec")) return;
+  tab.insertAdjacentHTML("beforeend", `<section class="panel" id="fbSec" style="margin-top:14px"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">📬 직원 피드백 & AI 일괄 개선</h2><div class="row"><button class="btn" type="button" id="fbPromptBtn">📋 Claude 자동 수정용 프롬프트 생성/복사</button><button class="btn ghost" type="button" id="fbReload">새로고침</button></div></div>
+    <p class="hint">직원들이 답변 아래 「피드백 / 오류 제보」로 보낸 내용입니다. 프롬프트를 복사해 Claude에 붙여 넣으면 판정 기준과 지식베이스 수정을 요청할 수 있습니다. 반영을 마친 건은 「처리 완료」로 지우세요.</p>
+    <div class="status" id="fbSt"></div><textarea class="field hidden" id="fbPromptOut" rows="8" style="width:100%;margin:8px 0" readonly></textarea><div id="fbList"></div></section>`);
+  $("#fbReload").onclick = fbLoad;
+  window.addEventListener("hashchange", () => { if (location.hash === "#admin") fbLoad(); });
+  $("#fbPromptBtn").onclick = async () => {
+    if (!FB_ROWS.length) await fbLoad();
+    if (!FB_ROWS.length){ toast("접수된 피드백이 없습니다."); return; }
+    const txt = fbPrompt(FB_ROWS.slice().reverse()), out = $("#fbPromptOut"); out.value = txt; out.classList.remove("hidden");
+    try { await navigator.clipboard.writeText(txt); toast(`피드백 ${FB_ROWS.length}건으로 프롬프트를 만들어 복사했습니다. Claude에 붙여 넣으세요.`, 4500); } catch { out.select(); toast("아래 칸의 내용을 복사해 Claude에 붙여 넣으세요.", 4500); }
+  };
+  $("#fbList").addEventListener("click", async e => {
+    const im = e.target.closest("[data-fbimg]"); if (im){ const w = window.open(""); if (w) w.document.write(`<img src="${im.src}" style="max-width:100%">`); return; }
+    const del = e.target.closest("[data-fbdel]"); if (!del || !confirm("이 피드백을 처리 완료로 삭제할까요?")) return;
+    try { await FBS.del(del.dataset.fbdel); fbLoad(); } catch { toast("삭제하지 못했습니다."); }
   });
+  fbLoad();
+}
+(async () => {
+  for (let i = 0; i < 60 && window.__owner === undefined; i++) await new Promise(r => setTimeout(r, 250));
+  if (window.__owner) admExtras();
 })();
 /* ---------- 화면 밝기 ---------- */
 (function(){
