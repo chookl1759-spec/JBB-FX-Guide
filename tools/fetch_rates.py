@@ -18,19 +18,25 @@ def get(d):
 today = dt.datetime.now(KST).date()
 data = json.load(open(path, encoding="utf-8"))
 rates = data.get("rates", {})
+seen = data.get("first_seen", {})   # 날짜별로 이 도구가 처음 받아 온 시각(고시 시각 측정용)
+before = set(rates)
 days = [today - dt.timedelta(days=i) for i in range(11)]
 days = [d for d in days if d.weekday() < 5]
 with cf.ThreadPoolExecutor(4) as ex:
     for k, v in ex.map(get, days):
         if len(v) >= 30: rates[k] = v
         elif not v.get("USD"): rates.pop(k, None)
+now = dt.datetime.now(KST).strftime("%H:%M")
+for k in rates:
+    if k not in before and k not in seen: seen[k] = now
 keep = sorted(rates)[-420:]
+seen = {k: seen[k] for k in sorted(seen)[-60:]}
 rates = {k: rates[k] for k in keep}
 data = {"source": "서울외국환중개(주) 일별 최초고시 매매기준율 및 재정된 매매기준율",
  "source_url": "http://www.smbs.biz/ExRate/TodayExRate.jsp",
  "note": "원화 기준 고시율. JPY·IDR·VND는 100단위 기준. 미화 환산은 해당 통화의 재정된 매매기준율 ÷ 미화 매매기준율로 계산",
  "units": UNITS, "updated_at": dt.datetime.now(KST).strftime("%Y-%m-%d %H:%M KST"),
- "latest": keep[-1], "rates": rates, "partial": None}
+ "latest": keep[-1], "first_seen": seen, "rates": rates, "partial": None}
 json.dump(data, open(path, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 lt = keep[-1]; print("latest", lt, "USD", rates[lt]["USD"], "count", len(rates[lt]), "dates", len(rates))
 usd = rates[lt]["USD"]
