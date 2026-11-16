@@ -5,7 +5,7 @@ name: Claude 버전 데이터 배포
 
 on:
   workflow_run:
-    workflows: ["고시환율 갱신", "법령 개정 점검"]
+    workflows: ["고시환율 갱신", "법령 개정 점검", "아침 상시 점검(환율·법령)"]
     types: [completed]
   schedule:
     - cron: "40 1 * * *"   # 매일 10:40 (한국 시간) 안전망

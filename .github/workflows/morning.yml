@@ -1,0 +1,85 @@
+# 아침 상시 점검: 고시환율·법령 점검을 정해진 시각에 확실히 하기 위한 "깨어 있는" 작업입니다.
+# GitHub 예약 실행은 붐비면 1시간가량 늦거나 건너뛰는 일이 있어서, 06:00~07:30(한국 시간)에 30분 간격으로
+# 시작 시도를 여러 번 걸어 두고, 그중 하나가 시작되면 11:05까지 켜진 채로 5분마다 직접 확인합니다.
+#  - 고시환율(평일): 07:50부터 5분마다 조회 → 오늘 고시가 나오면 바로 저장
+#  - 법령 점검(매일): 09:07에 실행, 실패하면 30분 뒤 다시(최대 3번)
+#  - 저장할 때마다 Claude 버전 데이터 배포(cdn.yml)를 바로 실행
+# 같은 날 이미 다 끝났으면 다음 시작 시도는 바로 끝납니다. 기존 rates.yml·laws.yml 예약은 예비로 남겨 둡니다.
+name: 아침 상시 점검(환율·법령)
+
+on:
+  schedule:
+    - cron: "0,30 21,22 * * *"   # 매일 06:00·06:30·07:00·07:30 (한국 시간) 시작 시도
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # data/rates.json·data/updates.json 커밋
+  actions: write    # cdn.yml 실행
+
+concurrency: { group: morning, cancel-in-progress: false }
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - name: 11:05까지 5분마다 확인
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LAW_OC: ${{ secrets.LAW_OC }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          kst() { TZ=Asia/Seoul date +"$1"; }
+          TODAY=$(kst %F); DOW=$(kst %u)
+          latest() { python3 -c "import json;print(json.load(open('data/rates.json'))['latest'])"; }
+          lawday() { python3 -c "import json;print(str(json.load(open('data/updates.json')).get('checked_at',''))[:10])"; }
+          push() {  # $1: 파일, $2: 커밋 메시지
+            git add "$1"
+            if git diff --cached --quiet; then return 0; fi
+            git commit -q -m "$2"
+            for i in 1 2 3 4 5; do
+              git pull -q --rebase origin main && git push -q origin HEAD:main && break
+              echo "push 재시도 $i"; sleep $((i*5))
+            done
+            gh workflow run cdn.yml --ref main || echo "::warning::Claude 버전 배포 실행 요청 실패(10:40 예비 실행이 있음)"
+          }
+          git pull -q origin main
+          RATES_DONE=0; LAWS_DONE=0; LAW_TRY=0; NEXT_LAW=0907
+          [ "$DOW" -ge 6 ] && RATES_DONE=1                     # 주말은 고시 없음
+          [ "$(latest)" = "$TODAY" ] && RATES_DONE=1             # 이미 받음
+          [ "$(lawday)" = "$TODAY" ] && [ "$(kst %H%M)" -ge 0907 ] && LAWS_DONE=1
+          echo "시작 $(kst '%F %H:%M') · 환율 완료=$RATES_DONE · 법령 완료=$LAWS_DONE"
+          while [ "$(kst %H%M)" -lt 1105 ] && { [ $RATES_DONE = 0 ] || [ $LAWS_DONE = 0 ]; }; do
+            NOW=$(kst %H%M)
+            if [ $RATES_DONE = 0 ] && [ "$NOW" -ge 0750 ]; then
+              git pull -q origin main
+              if python3 tools/fetch_rates.py data/rates.json && [ "$(latest)" = "$TODAY" ]; then
+                echo "$(kst %H:%M) 오늘 고시환율 확인 → 저장"
+                push data/rates.json "data: 고시환율 자동 갱신 $TODAY"
+                RATES_DONE=1
+              else
+                git checkout -q -- data/rates.json; echo "$(kst %H:%M) 아직 오늘 고시 전"
+              fi
+            fi
+            if [ $LAWS_DONE = 0 ] && [ "$NOW" -ge "$NEXT_LAW" ]; then
+              git pull -q origin main
+              LAW_TRY=$((LAW_TRY+1))
+              if python3 tools/check_laws.py data/updates.json; then
+                echo "$(kst %H:%M) 법령 점검 완료 → 저장"
+                push data/updates.json "data: 법령 개정 점검 $TODAY"
+                LAWS_DONE=1
+              else
+                git checkout -q -- data/updates.json
+                if [ $LAW_TRY -ge 3 ]; then echo "::error::법령 점검 3번 실패"; LAWS_DONE=1
+                else NEXT_LAW=$(TZ=Asia/Seoul date -d '+30 min' +%H%M); echo "법령 점검 실패 → $NEXT_LAW 재시도"; fi
+              fi
+            fi
+            { [ $RATES_DONE = 1 ] && [ $LAWS_DONE = 1 ]; } && break
+            sleep 300
+          done
+          echo "### 아침 점검 결과 $(kst '%F %H:%M')" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 고시환율: $([ $RATES_DONE = 1 ] && echo 완료 || echo 미완료) (최신 $(latest))" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 법령 점검: $([ $LAWS_DONE = 1 ] && echo 완료 || echo 미완료)" >> "$GITHUB_STEP_SUMMARY"
+          [ $RATES_DONE = 1 ] || echo "::warning::11:05까지 오늘 고시환율이 없음(공휴일이면 정상)"
