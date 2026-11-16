@@ -143,22 +143,35 @@ def parse_admrul_head(text):
 
 
 # ---------- 방법 2: 웹페이지 (키 없을 때) ----------
+def hidden(html, name):
+    """<input ... name="lsiSeq" ... value="276137"> 의 값(숫자)"""
+    for tag in re.findall(r"<input[^>]*>", html):
+        if re.search(r'\bname="%s"' % name, tag):
+            v = re.search(r'\bvalue="(\d+)"', tag)
+            if v:
+                return v.group(1)
+    return None
+
+
 def via_web(name, kind):
     html = get(page_url(name, kind, encoded=True))
     if kind == "law":
+        # 예전 화면: lsInfoP 링크 / 2026.11 이후 화면: 숨은 입력칸(name="lsiSeq", name="efYd")
         m = re.search(r"lsInfoP\.do\?lsiSeq=(\d+)[^\"'<>]*?efYd=(\d{8})", html)
-        if not m:
+        seq, ef = (m.group(1), m.group(2)) if m else (hidden(html, "lsiSeq"), hidden(html, "efYd"))
+        if not seq:
             raise RuntimeError("lsInfoP 링크를 찾지 못함")
-        d = get(f"https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq={m.group(1)}&efYd={m.group(2)}&chrClsCd=010202&urlMode=lsInfoP&ancYnChk=0")
+        d = get(f"https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq={seq}" + (f"&efYd={ef}" if ef else "") + "&chrClsCd=010202&urlMode=lsInfoP&ancYnChk=0")
         h = re.search(r"\[\s*시행\s*([\d.\s]+?)\s*\]\s*\[\s*([가-힣]+)\s*제\s*([\d-]+)\s*호\s*,\s*([\d.\s]+?)\s*,", d)
         if not h:
             raise RuntimeError("시행일·번호를 읽지 못함")
         return [{"number": h.group(3), "version": f"{h.group(2)} 제{h.group(3)}호 ({ymd(h.group(4))} 공포)",
                  "effective": ymd(h.group(1))}]
     m = re.search(r"admRulInfoP\.do\?admRulSeq=(\d+)", html)
-    if not m:
+    seq = m.group(1) if m else hidden(html, "admRulSeq")
+    if not seq:
         raise RuntimeError("admRulInfoP 링크를 찾지 못함")
-    d = get(f"https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq={m.group(1)}&chrClsCd=010201")
+    d = get(f"https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq={seq}&chrClsCd=010201")
     return [parse_admrul_head(d)]
 
 
