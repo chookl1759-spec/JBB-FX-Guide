@@ -2644,6 +2644,9 @@ body{padding-bottom:34px}
 .fxc-card .path{font-size:12px;color:var(--t-cap)}
 .fxc-card .ft{margin-top:8px;font-size:12px;color:var(--t-cap)}
 .fxc-card .ft a{cursor:pointer;text-decoration:underline}
+
+.lj-alt{background:rgba(0,110,220,.06);border-radius:12px;padding:8px 10px;margin:6px -6px}
+.lj-alt ul{margin:4px 0 0;padding-left:18px}.lj-alt li{margin:2px 0}
 </style>
 <style id="sheetCss"></style>
 </head>
@@ -3368,6 +3371,8 @@ const RULES = `당신은 전북은행 외환사업부의 외환 유권해석 보
 ## 필요 서식
 ([서식 제X-X호], [별지 X의X]. 없으면 '해당 없음')
 ## 유의사항
+## 대안
+(결론이 '불가', '한도 초과', '증빙 필요', '확인 필요'이거나 고객이 원하는 방식으로 바로 처리할 수 없으면 반드시 쓰세요. 원문을 찾아 합법적으로 가능한 다른 처리 경로를 모두 번호 목록으로, 경로마다 요건·신고기관·필요서류·근거조문을 한 줄씩 쓰세요. 예) 증빙 없이 연간 미화 10만불을 넘는 생활비·용돈·증여성 송금 → ① 지급 사유와 금액을 입증하는 서류를 내고 은행 확인 후 송금 [규정 제4-3조] ② 대가 없는 송금(증여)이면 거주자의 비거주자 앞 증여로 한국은행총재에 신고한 뒤 송금 [규정 제7-44조] [규정 제7-46조] (사유코드 37208) ③ 수취인이 해외유학생·해외체재자이면 거래외국환은행을 지정하고 유학·체재 입증서류로 송금 [규정 제4-5조] ④ 건당 미화 5천불 이내는 증빙 없이 가능하나 나눠 보내기는 회피성 분할로 점검 대상. 바로 처리할 수 있는 건이면 '해당 없음')
 ## 추가 확인 필요
 (결론을 바꿀 수 있는 사실관계. 없으면 생략)
 한국어로, 은행 실무자가 바로 쓸 수 있게 간결하게 쓰세요.
@@ -3471,12 +3476,14 @@ function ljSummaryHTML(text){
   const tier = tierOf(v), g = guardOf(v, text);
   const concl = ljClean(v["요지"] || pick(/결론/)[0] || "");
   const docs = pick(/제출서류|징구|필요\s*서류/).map(ljClean).filter(x => x && !/^해당 없음/.test(x));
+  const alts = pick(/^대안/).map(ljClean).filter(x => x && !/^(해당 없음|없음)/.test(x));
   const warn = ljClean(pick(/유의/)[0] || "") || (g.amber && g.reasons.length ? "본점 확인 필요 — " + g.reasons[0] : "") || ljClean(pick(/추가 확인/)[0] || "");
   const tl = tier === 2 && /불요/.test(String(v["지정거래외국환은행"] || "")) ? (/신고 필요|신고수리/.test(String(v["신고여부"] || "")) ? "② 외국환은행 신고" : "② 외국환은행 확인") : TIER_L[tier];
   if (!concl && !docs.length) return "";
   return `<section class="lj-sum" aria-label="3초 핵심 요약"><div class="lj-sum-top">${tier ? `<span class="tg t${tier}">${esc(tl)}</span>` : `<span class="tg">확인 필요</span>`}${v["신고여부"] ? `<span class="tg">${esc(v["신고여부"])}</span>` : ""}${g.amber ? `<span class="tg amb">⚠ 본점 확인</span>` : ""}</div>`
     + (concl ? `<div class="lj-row"><i aria-hidden="true">📌</i><div><b>결론</b>${esc(concl)}</div></div>` : "")
     + (docs.length ? `<div class="lj-row"><i aria-hidden="true">📋</i><div><b>필수 징구 서류</b><ul>${docs.slice(0, 3).map(d => `<li>${esc(d.length > 70 ? d.slice(0, 68) + "…" : d)}</li>`).join("")}</ul>${docs.length > 3 ? `<small>외 ${docs.length - 3}건은 아래 상세에서 확인하세요</small>` : ""}</div></div>` : "")
+    + (alts.length ? `<div class="lj-row lj-alt"><i aria-hidden="true">🔀</i><div><b>대안 (바로 안 될 때 가능한 방법)</b><ul>${alts.slice(0, 4).map(a => `<li>${esc(a.length > 150 ? a.slice(0, 148) + "…" : a)}</li>`).join("")}</ul></div></div>` : "")
     + (warn ? `<div class="lj-row"><i aria-hidden="true">⚠️</i><div><b>유의</b>${esc(warn.length > 110 ? warn.slice(0, 108) + "…" : warn)}</div></div>` : "")
     + `</section>`;
 }
@@ -4804,7 +4811,8 @@ function chatBody(text){
   const card = `<section class="lj-sum" aria-label="3초 핵심 요약">${v["구분"] ? `<div class="lj-sum-top"><span class="tg">${esc(v["구분"])}</span></div>` : ""}`
     + (v["결론"] ? `<div class="lj-row"><i aria-hidden="true">📌</i><div><b>결론</b>${esc(v["결론"])}</div></div>` : "")
     + (docs.length ? `<div class="lj-row"><i aria-hidden="true">📋</i><div><b>필수 징구 서류</b><ul>${docs.slice(0, 3).map(d => `<li>${esc(d)}</li>`).join("")}</ul>${docs.length > 3 ? `<small>외 ${docs.length - 3}건은 아래 상세에서</small>` : ""}</div></div>` : "")
-    + (v["유의"] ? `<div class="lj-row"><i aria-hidden="true">⚠️</i><div><b>유의</b>${esc(v["유의"])}</div></div>` : "") + `</section>`;
+    + (v["유의"] ? `<div class="lj-row"><i aria-hidden="true">⚠️</i><div><b>유의</b>${esc(v["유의"])}</div></div>` : "")
+    + (v["대안"] && !/^(없음|해당 없음|-)?$/.test(String(v["대안"]).trim()) ? `<div class="lj-row lj-alt"><i aria-hidden="true">🔀</i><div><b>대안</b><ul>${String(v["대안"]).split(/\s*\|\s*/).filter(Boolean).slice(0, 3).map(a => `<li>${esc(a)}</li>`).join("")}</ul></div></div>` : "") + `</section>`;
   const hq = /③|④|신고수리|한국은행|재정경제부/.test(v["구분"] || "") || HQ_LAW.test("규정 " + (v["근거"] || "").replace(/^규정\s*/, ""));
   return (hq ? '<div class="hq-badge" role="alert">⚠️ 외환사업부 본점 최종 승인 필요 건</div>' : "") + card + (rest ? `<details class="lj-acc"><summary>관련 법령 조문 및 세부 규정 보기${v["근거"] ? ` (${esc(v["근거"])} 등)` : ""}</summary><div class="lj-in">${md(rest)}</div></details>` : "");
 }
@@ -4942,7 +4950,7 @@ const VERIFY = (type, q, facts, answer) => `당신은 전북은행 외환사업�
 ## 조문 확인
 - [조문] 1차 의견의 해당 판단이 원문과 맞는지 한 문장 (맞음 또는 다름과 이유)
 ## 놓친 쟁점
-(없으면 '없음')
+(1차 의견이 빠뜨린 대안 처리 경로 — 예: 한국은행 신고 후 지급, 증빙 제출 후 지급, 지정거래외국환은행 경유 — 가 있으면 반드시 포함. 없으면 '없음')
 ## 수정 의견
 (판정·서류·절차 중 바꿔야 할 것. 없으면 '없음')
 
@@ -5368,11 +5376,16 @@ window.__LOCAL = true;
       cautions:["연간 누계는 1월 1일부터 12월 31일까지, 다른 금융회사를 통한 무증빙 송금까지 합산합니다. 창구에서 ORIS로 반드시 조회하세요.", "이 지급은 거래외국환은행 지정 대상이 아닙니다.", "같은 사람이나 가족·관련자가 5천불·1만불 바로 아래 금액으로 여러 번 나눠 보내면 규정 회피성 분할 송금인지 점검하세요. 규정은 분할한 지급을 합산해 판단합니다 [규정 제5-10조].", "해외부동산·해외직접투자·해외예금처럼 신고가 필요한 자본거래 자금이면 이 방법으로 보낼 수 없습니다. 해당 유형으로 다시 판정하세요."] };
     if (u && u > 1e5){
       return R({ ...base, v:V("신고 불요", "증빙서류 제출 후 은행 확인", "외국환은행의 장", "해당 없음", "지정 불요", "② 지정은행 확인", "규정 제4-2조제1항; 규정 제4-3조제1항제2호", "불요", `${U(u)}은 증빙 없이 보낼 수 있는 연간 10만불을 넘으므로, 지급 사유와 금액을 입증하는 서류를 내시면 신고 없이 보낼 수 있습니다.`),
-        concl:`이번 지급 ${U(u)}은 증빙서류 없이 보낼 수 있는 연간 누계 10만불을 넘습니다. 지급 사유와 금액을 입증하는 서류를 받아 은행이 확인한 뒤 지급합니다(신고 불요).`,
+        concl:`이번 지급 ${U(u)}은 증빙서류 없이 보낼 수 있는 연간 누계 10만불을 넘습니다. 지급 사유와 금액을 입증하는 서류를 받아 은행이 확인한 뒤 지급합니다(신고 불요). 입증이 어려운 증여성 송금이면 한국은행에 증여 신고를 한 뒤 보낼 수 있습니다(아래 대안 참고).`,
         basis:["지급등을 하려는 자는 지급 사유와 금액을 입증하는 서류를 외국환은행에 내야 합니다 [규정 제4-2조].", "연간 10만불을 넘더라도 신고가 필요 없는 거래로서 거래 내용과 금액을 서류로 은행이 확인할 수 있으면 지급할 수 있습니다 [규정 제4-3조]."].concat(base.basis.slice(2)),
         steps:["ORIS로 올해 무증빙 송금 누계를 조회합니다.", "지급 사유와 금액을 입증하는 서류(계약서·청구서·가족관계 서류 등)를 받아 거래 내용과 금액을 확인합니다.", "신고가 필요한 자본거래(부동산·투자·예금 등)가 아닌지 확인합니다.", "송금신청서를 받아 송금합니다."],
-        docs:[APP, IDD, "지급 사유와 금액을 입증하는 서류 (계약서·청구서·송장, 생활비라면 가족관계 확인 서류 등)"], forms:base.forms, ids:base.ids.concat(["규정 제4-2조"]), cautions:base.cautions,
-        more:["입증서류를 낼 수 없는 경우, 건당 미화 5천불 이내만 증빙 없이 보낼 수 있습니다 [규정 제4-3조]."] });
+        docs:[APP, IDD, "지급 사유와 금액을 입증하는 서류 (계약서·청구서·송장, 생활비라면 가족관계 확인 서류 등)"], forms:base.forms, cautions:base.cautions,
+        more:["수취인이 해외유학생·해외체재자인지, 대가 없는 증여인지에 따라 아래 대안 중 처리 경로가 달라집니다."],
+        alts:["지급 사유와 금액을 입증하는 서류(생활비면 가족관계증명서·수취인 체재 사실 등)를 내면 은행 확인 후 신고 없이 송금 [규정 제4-3조]",
+          "대가 없는 용돈·생활비·증여 성격이라 입증서류로 확인하기 어려우면, 거주자의 비거주자 앞 증여로 한국은행총재에게 신고(외국환은행 경유)한 뒤 신고필증으로 송금 [규정 제7-44조] [규정 제7-46조] — 사유코드 37208",
+          "수취인이 해외유학생이거나 해외체재자(외국 30일 초과 체재 거주자)이면 거래외국환은행을 지정하고 재학·체재 입증서류로 유학·체재경비로 송금(금액 한도 없음) [규정 제4-5조]",
+          "건당 미화 5천불 이내 지급은 증빙 없이 가능하지만 큰 금액을 나눠 보내는 것은 규정 회피성 분할로 점검 대상입니다 [규정 제4-3조]"],
+        ids:base.ids.concat(["규정 제4-2조", "규정 제7-44조", "규정 제7-46조", "규정 제4-5조"]) });
     }
     const amt = u ? `${U(u)}` : "이번 금액";
     return R({ ...base, v:V("신고 불요", "신고예외 거래 (증빙서류 미제출 지급)", "해당 없음", "해당 없음", "지정 불요", "① 신고 불요", "규정 제4-3조제1항제1호", "불요", `올해 다른 은행·송금업체 금액을 합쳐 10만불 이내라면 증빙서류 없이 신고 없이 보낼 수 있습니다.`),
@@ -5678,6 +5691,7 @@ window.__LOCAL = true;
     for (const k of ["신고여부","신고유형","신고기관","신고시기","지정거래외국환은행","신고구분","근거조문","본점확인","요지"]) L.push(`${k}: ${r.v[k]}`);
     L.push("<</판정>>", "## 결론", r.concl, "", "## 근거", ...r.basis.map(b => "- " + b), "", "## 처리 절차", ...r.steps.map((s, i) => `${i + 1}. ${s}`), "", "## 제출서류", ...r.docs.map(d => "- " + d), "", "## 필요 서식", r.forms.length ? r.forms.join(", ") : "해당 없음");
     if (r.cautions.length) L.push("", "## 유의사항", ...r.cautions.map(c => "- " + c));
+    if (r.alts && r.alts.length) L.push("", "## 대안", ...r.alts.map((c, i) => `${i + 1}. ${c}`));
     if (r.more.length) L.push("", "## 추가 확인 필요", ...r.more.map(c => "- " + c));
     L.push("", "※ 내장 판정 엔진 결과입니다. 외국환거래규정·취급지침 원문 조항에 연결된 규칙으로 판정했으며 외부 AI를 쓰지 않습니다. 질의에 적힌 사실관계 중 규칙이 읽지 못한 부분이 있을 수 있으니 '추가 확인 필요'와 근거 원문을 함께 확인하세요.");
     return L.join("\n");
@@ -5690,6 +5704,8 @@ window.__LOCAL = true;
     return { t, q, facts };
   }
   const KB2 = [
+    { re:/(10만\s*불|십만\s*불|한도).{0,20}(초과|넘|이상)|(초과|넘는|넘어).{0,15}(10만|한도)|(용돈|생활비|증여|선물).{0,30}(\d+\s*만\s*불|큰\s*돈|많이)/, sum:{ 구분:"② 은행 확인 또는 ③ 한국은행 신고", 결론:"증빙 없는 송금은 연간 미화 10만불까지입니다. 넘는 금액은 지급 사유를 서류로 확인하거나, 대가 없는 증여라면 한국은행에 신고한 뒤 보낼 수 있습니다.", 서류:["송금신청서 · 실명확인증표", "지급 사유·금액 입증서류 (가족관계증명서 등)", "한국은행 증여 신고필증 (증여로 처리할 때)"], 유의:"연간 누계는 다른 금융회사 무증빙 송금까지 합산하니 ORIS로 꼭 조회하고, 나눠 보내기는 회피성 분할로 점검하세요.", 대안:["입증서류 제출 후 은행 확인 송금", "한국은행 증여 신고 후 송금 (사유코드 37208)", "유학생·해외체재자면 지정은행 경유 송금"], 근거:"규정 제4-3조" }, ids:["규정 제4-3조", "규정 제7-44조", "규정 제7-46조", "규정 제4-5조"],
+      a:"## 대안\n1. **증빙서류 제출**: 지급 사유와 금액을 입증하는 서류(생활비면 가족관계증명서, 수취인 체재 사실 등)를 내면 신고 없이 은행 확인 후 송금 [규정 제4-3조].\n2. **한국은행 증여 신고**: 대가 없는 용돈·생활비·증여이고 서류로 확인하기 어려우면, 거주자의 비거주자 앞 증여로 한국은행총재에게 신고(외국환은행 경유)한 뒤 신고필증으로 송금 [규정 제7-44조] [규정 제7-46조]. 사유코드는 37208(한국은행 신고를 필한 증여).\n3. **유학·체재경비**: 수취인이 해외유학생이거나 해외체재자(외국 30일 초과 체재하는 거주자)이면 거래외국환은행을 지정하고 재학·체재 입증서류로 송금(금액 한도 없음) [규정 제4-5조].\n4. 건당 미화 5천불 이내는 증빙 없이 가능하지만, 큰 금액을 나눠 보내는 것은 규정 회피성 분할로 점검 대상입니다 [규정 제4-3조]." },
     { re:/수입.{0,12}(서류|증빙|징구)|(서류|증빙).{0,12}수입|송금\s*방식\s*수입|수입\s*대금.{0,10}(보낼|송금|지급)|인보이스.{0,10}(서류|필요)/, sum:{ 구분:"② 은행 확인 · 신고 불요", 결론:"물품 수입대금은 신고 없이 증빙서류를 확인해 보냅니다. 사후송금은 Invoice와 B/L(또는 수입신고필증), 사전송금은 Invoice·계약서로 확인합니다.", 서류:["송금신청서", "상업송장(Invoice) 또는 계약서", "B/L 또는 수입신고필증 (사후송금)"], 유의:"사전송금은 결제방식·무역거래형태·대응수입예정일까지 확인하고, 수취인이 수출자와 다르면 제3자 지급 신고를 확인하세요.", 근거:"규정 제4-2조" }, ids:["규정 제4-2조", "지침 p.52", "규정 제4-8조"],
       a:"**수입대금 지급 서류** [지침 p.52]\n- **사후송금**(선적서류·물품 수령 후): 송금신청서, 상업송장(Invoice) 또는 계약서, B/L 또는 수입신고필증(통관방식).\n- **사전송금**(선적서류·물품 수령 전): 송금신청서, 계약서·송장·Offer sheet·Purchase order·대금청구서 등 증빙서류. 거래상대방·거래금액·거래품목·대금결제방식·무역거래형태·대응수입예정일을 확인하고, 증빙으로 확인이 안 되면 지급신청서 별지로 확인합니다.\n- 대외무역법에 따른 물품 수입대금은 외국환거래법상 신고가 필요 없는 경상지급입니다 [규정 제4-2조].\n- 수출입대금 지급은 금액과 관계없이 관세청 통보, 건당 미화 1만불 초과는 국세청 통보 대상입니다 [규정 제4-8조].\n- 계약건당 10만불 초과 수입대금을 선적서류·물품 수령 1년 전을 넘겨 지급하면 한국은행 신고입니다 [규정 제5-8조]." },
     { re:/유학|학비|재학|입학|어학\s*연수/, sum:{ 구분:"② 지정은행 확인 · 신고 불요", 결론:"유학생 경비는 거래외국환은행을 지정하고 유학을 입증하는 서류를 받아 신고 없이 보냅니다.", 서류:["송금신청서 · 여권 사본", "입학허가서 (이후 매년 재학증명서)", "거래외국환은행 지정(변경)신청서"], 유의:"유학생은 매 연도 재학 입증 서류를 다시 받아야 합니다.", 근거:"규정 제4-5조" }, ids:["규정 제4-5조", "지침 p.60"],
@@ -5718,7 +5734,7 @@ window.__LOCAL = true;
     for (const s of ss){ const sc = ws.filter(w => s.includes(w)).length; if (sc > bs){ bs = sc; best = s; } }
     return bs > 0 ? (best.length > 220 ? best.slice(0, 218) + "…" : best) : "";
   }
-  function sumBlock(o){ return "<<요약>>\n" + ["구분", "결론", "서류", "유의", "근거"].map(k => `${k}: ${Array.isArray(o[k]) ? o[k].join(" | ") : (o[k] || "")}`).join("\n") + "\n<</요약>>\n"; }
+  function sumBlock(o){ return "<<요약>>\n" + ["구분", "결론", "서류", "유의", "대안", "근거"].map(k => `${k}: ${Array.isArray(o[k]) ? o[k].join(" | ") : (o[k] || "")}`).join("\n") + "\n<</요약>>\n"; }
   function chatAnswer(q){
     const t = guessType(q), hits = search(q, 4);
     const k2 = KB2.find(k => k.re.test(q));
@@ -6060,6 +6076,7 @@ function recCodes(text, t, n){
   const am = text.replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*(만\s*불|천\s*불|만\s*달러|천\s*달러|불|달러|USD|\$)/i);
   if (am){ const v = parseFloat(am[1]) * (/만/.test(am[2]) ? 10000 : /천/.test(am[2]) ? 1000 : 1), SMALL = ["10901", "30901", "37901"];
     for (const k of Object.keys(score)) if (SMALL.includes(k.split(":")[1])){ if (v > 5000 || v <= 1000) delete score[k]; }
+    if (v > 1e5 && dir === "지급" && score["지급:37205"]) add("지급:37208", score["지급:37205"] * 0.6, "10만불 초과 증여는 한국은행 신고");
     if (v > 1000 && v <= 5000){ const sm = /수입|수출|무역|인보이스|물품/.test(text) ? "10901" : /여행|관광|출장|유학/.test(text) ? "30901" : "37901"; add(dir + ":" + sm, 2.2, "건당 1천~5천불"); } }
   return Object.entries(score).filter(([k, s]) => s >= 1 && (k.startsWith("자본:") || k.startsWith(dir + ":"))).sort((a, b) => b[1] - a[1]).slice(0, n || 3).map(([k, s]) => ({ ...FXC_BY[k], key:k, score:s, why:why[k] || "" }));
 }
@@ -6081,7 +6098,7 @@ function fxcCardHTML(list, ai, title){
 }
 function fxAddCodeCard(box){
   if (!box || box.querySelector(".fxc-card")) return;
-  const q = box.dataset.fbq || "", ans = box.dataset.fba || "", t = TYPES.find(x => x.k === box.dataset.tk) || null;
+  const q = (box.dataset.fbq || "") + " " + ((box.querySelector(".r-facts, .facts") || {}).textContent || "") + " " + (((box.querySelector(".r-q") || {}).nextElementSibling || {}).textContent || ""), ans = box.dataset.fba || "", t = TYPES.find(x => x.k === box.dataset.tk) || null;
   const ai = fxcAIcodes(ans), rec = recCodes(q, t, 3), list = ai.concat(rec.filter(r => !ai.some(a => a.c === r.c && a.dir === r.dir))).slice(0, 3);
   const html = fxcCardHTML(list, ai); if (!html) return;
   const s = box.querySelector(".lj-sum"); if (s) s.insertAdjacentHTML("beforeend", html); else { const h = box.querySelector(".r-head"); if (h) h.insertAdjacentHTML("afterend", html); }
